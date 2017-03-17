@@ -1,0 +1,93 @@
+---
+title: "RABO Breeding .mdb Summary"
+author: "Ryan Peek"
+date: "Updated: `r format(Sys.Date())`"
+output:
+  html_document:
+    highlight: pygments
+    theme: yeti
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+```
+
+Once data has been stored in the access `.mdb` file, it can be pulled back into R for plotting and analysis. To load the data from the database:
+
+```{r get data, echo=T}
+library(tidyverse, warn.conflicts = F); library(lubridate, warn.conflicts = F)
+
+amphib<-read_csv(file = "data/base/amphib_survey_UCD_from_mdb.csv") %>% 
+  mutate(YYYY=year(surv_date), 
+         MM = month(surv_date),
+         DD = yday(surv_date))
+
+# fix name issue
+amphib$localsite[amphib$localsite=="Robber Rav"]<-"Robbers Rav"
+amphib$localsite[amphib$localsite=="US PH"]<-"US Ralston"
+amphib$localsite[amphib$river=="RUB" & amphib$localsite=="Mainstem"]<-"US Site"
+
+# remove erroneous point on MFY (row 190)
+amphib <- amphib[-190,]
+
+```
+
+
+Now if we want to take a look at the number of egg masses observed in each year at each site, we can use some `dplyr` magic to group and summarize.
+
+```{r summarizeeggs, echo=TRUE}
+
+emRABO <- amphib %>% filter(stage=="E") %>% 
+  group_by(river, localsite, YYYY) %>% 
+  summarize(eggs=sum(total_obs)) %>% 
+  arrange(YYYY)
+
+library(DT)
+DT::datatable(emRABO, caption=htmltools::tags$caption(
+                style = 'caption-side: bottom; text-align: center;',
+                htmltools::em('Table 1. '), 
+                htmltools::em('Total Egg Masses Observed By Site and Year')),
+              colnames = c("River"=2, "Local Site"=3, "Year"=4, "Eggs Obs."=5))
+```
+
+Ok, now let's plot when the earliest we've observed these eggs each year.
+
+```{r}
+
+emDate<-amphib %>% filter(stage=="E", amphib_spp=="RABO") %>% group_by(river, localsite, YYYY, DD) %>% summarize(eggs=sum(total_obs))
+
+library(plotly, warn.conflicts = F)
+
+ggplotly(ggplot(emDate) + 
+           geom_point(aes(x=DD, y=eggs, shape=river, color=localsite), size=4.5)+
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210), 
+                     labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15",
+                              "Jul-1","Jul-15","Aug-1")) + 
+  facet_grid(YYYY~.))
+```
+
+
+## Using Best Estimate of Earliest Oviposition Date
+
+Though the raw survey data shows some interesting trends, it needs to be adjusted to track the initial date vs. the surveyed date. Sometimes egg masses have ben laid and can be back calculated by gosner stage.
+
+```{r estimOviposition}
+
+oviD<-read_csv(file = "data/processed/oviposition_start_mainstem_sites.csv") %>%
+  mutate(obs_strt=mdy(obs_strt),
+         estim_strt=mdy(estim_strt),
+         YYYY=year(estim_strt), 
+         MM = month(estim_strt),
+         DD = yday(estim_strt))
+head(oviD)
+
+library(plotly, warn.conflicts = F)
+
+ggplotly(ggplot(oviD) + 
+           geom_point(aes(x=DD, y=totalEM, shape=Site, color=as.factor(Year)), size=4.5)+
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210), 
+                     labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15",
+                              "Jul-1","Jul-15","Aug-1")))
+```
+
