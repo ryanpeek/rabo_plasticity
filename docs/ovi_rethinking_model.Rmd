@@ -1,0 +1,104 @@
+---
+title: "rethinking_model"
+author: "Ryan Peek"
+date: "3/18/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+```
+
+## Try Model, Model Fail
+
+Let's try to assess whether water temperature, air temperature, flow (daily/weekly recession rates & discharge) play a role in predicting when breeding (oviposition occurs). To build this model we need to block by river, and by water year, as these are independent (though water year isn't *fixed*, it is fixed across all sites per each year).
+
+First let's take a look at some test data. Using a subset (say just pull the **NF American**), can we build a model that gets at whether there is predictability in these variables despite shifts in timing and magnitude from year to year?
+
+#### Get the Data
+
+```{r data}
+library(tidyverse)
+library(lubridate)
+frogBreed <- read_csv("data/oviposition_start_mainstem_sites.csv") %>% 
+  mutate(estim_strt=mdy(estim_strt),
+         obs_strt=mdy(obs_strt))
+hydroDat <- read_csv("data/oviposition_glm_stgtemps_long.csv") %>% 
+  mutate(Date=mdy(Date))
+```
+
+#### Tidy and Merge the Data
+
+```{r merge_data}
+source('scripts/functions/f_doy.R') # for adding year date cols
+
+# join the data together:
+data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt")) %>% 
+  mutate(site=as.factor(toupper(site)),
+         Site = as.factor(Site)) %>% 
+  add_WYD(., "Date")
+
+# select only data for a test (May-Jun for NFY/NFA)
+nfdf <- data1 %>% filter(site=="NFA" | site=="NFY") %>% 
+  filter(DOY>120, DOY<182) %>% 
+  select(Date, site, Site, WYT, obs_strt, missData, DOY:DOWY, air.7:level.7dL, -ppt2_in, -days_wo_ppt2)
+
+summary(nfdf)
+
+# remove NAs:
+nfdf <- nfdf %>% 
+
+```
+
+## Model
+
+```{r varying effects}
+library(rethinking)
+# varying effects model
+
+# get data
+d <- data1 # load here
+
+# fix index
+d$river_id <- as.integer(as.factor(d$river))
+
+# rename outcome so it doesn't have a dot in it
+dlist <- list(
+    river = d$river,
+    yday = d$yday,
+    year = d$year
+)
+
+m1a2 <- map2stan(
+    alist(
+        ovipos ~ dbinom( 1 , p ),
+        logit(p) <- a + a_river[river],
+        a ~ dnorm(0,10),
+        a_river[river] ~ dnorm(0,sigma),
+        sigma ~ dcauchy(0,1)
+    ),
+    data=dlist)
+
+pred.dat <- list(district=1:60)
+pred2 <- link(m1a2,data=pred.dat)
+
+p2.mean <- apply( pred2 , 2 , mean )
+round(p2.mean,2)
+
+plot( 1:60 , p1.mean , col=rangi2 , pch=16 , xlab="District" ,
+    ylab="probability use contraception" )
+points( 1:60 , p2.mean )
+abline( h=logistic(coef(m1a2)[1]) , lty=2 ) # plot line for 'a'
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
