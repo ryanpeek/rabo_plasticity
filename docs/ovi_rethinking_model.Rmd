@@ -1,7 +1,7 @@
 ---
-title: "rethinking_model"
+title: "Oviposition Logisitic"
 author: "Ryan Peek"
-date: "3/18/2017"
+date: "Updated: `r format(Sys.Date())`"
 output: html_document
 ---
 
@@ -16,63 +16,370 @@ Let's try to assess whether water temperature, air temperature, flow (daily/week
 
 First let's take a look at some test data. Using a subset (say just pull the **NF American**), can we build a model that gets at whether there is predictability in these variables despite shifts in timing and magnitude from year to year?
 
-#### Get the Data
+### Get the Data
 
 ```{r data}
 library(tidyverse)
 library(lubridate)
+
+sites <- c("NFA", "NFY")
+
 frogBreed <- read_csv("data/oviposition_start_mainstem_sites.csv") %>% 
   mutate(estim_strt=mdy(estim_strt),
-         obs_strt=mdy(obs_strt))
+         obs_strt=mdy(obs_strt)) %>%
+  select(Site:WYT, REG:totalEM)
+  #filter(Site %in% sites)
+
 hydroDat <- read_csv("data/oviposition_glm_stgtemps_long.csv") %>% 
-  mutate(Date=mdy(Date))
+  mutate(Date=mdy(Date),
+         site=as.factor(toupper(site)))
+
 ```
 
-#### Tidy and Merge the Data
+### Tidy and Merge the Data
 
 ```{r merge_data}
 source('scripts/functions/f_doy.R') # for adding year date cols
 
 # join the data together:
-data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt")) %>% 
-  mutate(site=as.factor(toupper(site)),
-         Site = as.factor(Site)) %>% 
-  add_WYD(., "Date")
+data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
+  mutate(site = as.factor(site))
+data1 <- add_WYD(data1, "Date") %>% 
+  mutate(WYT = as.factor(WYT),
+         DOY = as.integer(DOY),
+         WY = as.integer(WY),
+         DOWY = as.integer(DOWY))
+names(data1)
+
+# join just breeding points together:
+# data2 <- inner_join(hydroDat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
+#   mutate(site = as.factor(site),
+#          WYT = as.factor(WYT))
+# data2 <- add_WYD(data2, "Date") %>% 
+#   mutate(WYT = as.factor(WYT),
+#          DOY = as.integer(DOY),
+#          WY = as.integer(WY),
+#          DOWY = as.integer(DOWY))
+# names(data2)
 
 # select only data for a test (May-Jun for NFY/NFA)
-nfdf <- data1 %>% filter(site=="NFA" | site=="NFY") %>% 
+
+nfdf <- data1 %>% #filter(site %in% sites) %>% 
   filter(DOY>120, DOY<182) %>% 
-  select(Date, site, Site, WYT, obs_strt, missData, DOY:DOWY, air.7:level.7dL, -ppt2_in, -days_wo_ppt2)
+  select(Date, site, obs_strt, totalEM, -WYT, DOY:DOWY, air.7:level.7dL, -ppt2_in, -days_wo_ppt2)
 
 summary(nfdf)
 
-# remove NAs:
-nfdf <- nfdf %>% 
+# remove NAs and non-NF sites:
+nfdf <- nfdf %>% filter(!is.na(air.7), !is.na(level.avg))
+summary(nfdf)
+
+# add binary 1 or 0 for breeding
+nfdf <- nfdf %>% mutate(ovipos=as.integer(ifelse(is.na(totalEM), 0, 1)))
+names(nfdf)
+
+# get data
+d <- nfdf %>% dplyr::select(ovipos, site,WY, DOWY, air.7:level.7dL) %>% 
+  filter(!is.na(ppt_in))
+summary(d)
+
+# fix indexes
+d$river_id <- as.integer(as.factor(d$site))
+d$WY_id <- as.integer(as.factor(d$WY))
+d$DOWY <- as.integer(d$DOWY)
+
+# drop factors
+d <- dplyr::select(d, -site, -WY) %>% setNames(., gsub("\\.", "_", colnames(.))) %>% as.data.frame
+names(d)
+```
+
+## PCA
+
+Try a PCA of the variables to see which is strongest predictor and potentially reduce collinearity.
+
+```{r}
+
+# need to create a train set:
+train <- d %>% sample_n(size=300, replace=FALSE) %>% row.names() %>% as.integer()
+
+traindat <- d[train,]
+testdat <- d[-train,]
+
+#remove the dependent and identifier variables
+traindat <- traindat %>% select(-ovipos, -river_id)
+
+# PCA
+prin_comp <- prcomp(traindat, scale. = T)
+prin_comp$center
+
+# rotation: The rotation measure provides the principal component loading. Each column of rotation matrix contains the principal component loading vector. This is the most important measure we should be interested in
+prin_comp$rotation
+
+# loadings per variable PC1
+prin_comp$rotation[,1:3] %>% as.data.frame %>%
+  mutate(vars = row.names(prin_comp$rotation)) %>% 
+  select(vars, PC1:PC3) %>% arrange(PC1)
+
+# loadings per variable PC2
+prin_comp$rotation[,2:3] %>% as.data.frame %>%
+  mutate(vars = row.names(prin_comp$rotation)) %>% 
+  select(vars, PC2:PC3) %>% arrange(PC2)
+
+# loadings per variable PC2
+prin_comp$rotation[,1:3] %>% as.data.frame %>%
+  mutate(vars = row.names(prin_comp$rotation)) %>% 
+  select(vars, PC3) %>% arrange(PC3)
+
+
+# plot
+biplot(prin_comp, scale = 0)
+
+# compute SD for each 
+std_dev <- prin_comp$sdev
+
+pr_var <- std_dev^2
+pr_var[1:10]
+
+#the proportion of var explained by each component (var / (sum total var))
+prop_varex <- pr_var/sum(pr_var)
+
+prop_varex
+
+#scree plot
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b")
+
+
+# Model
+#add a training set with principal components
+train.data <- data.frame(Item_Outlet_Sales = train$Item_Outlet_Sales, prin_comp$x)
+
+#we are interested in first 30 PCAs
+train.data <- train.data[,1:31]
+
+#run a decision tree
+install.packages("rpart")
+library(rpart)
+rpart.model <- rpart(Item_Outlet_Sales ~ .,data = train.data, method = "anova")
+rpart.model
+
+#transform test into PCA
+test.data <- predict(prin_comp, newdata = pca.test)
+test.data <- as.data.frame(test.data)
+
+#select the first 30 components
+test.data <- test.data[,1:30]
+
+#make prediction on test data
+rpart.prediction <- predict(rpart.model, test.data)
 
 ```
 
-## Model
 
-```{r varying effects}
-library(rethinking)
-# varying effects model
+## BRT Model
+
+```{r brt1}
+library(dismo)
 
 # get data
-d <- data1 # load here
+d <- nfdf %>% dplyr::select(ovipos, site,WY, DOWY, air.7:level.7dL) %>% 
+  filter(!is.na(ppt_in))
+summary(d)
+
+# fix indexes
+d$river_id <- as.integer(as.factor(d$site))
+d$WY_id <- as.integer(as.factor(d$WY))
+d$DOWY <- as.integer(d$DOWY)
+
+# drop factors
+d <- dplyr::select(d, -site, -WY) %>% setNames(., gsub("\\.", "_", colnames(.))) %>% as.data.frame
+names(d)
+
+egg.tc5.lr01 <- gbm.step(data= d, gbm.x = 2:23, gbm.y = 1,
+                         family = "bernoulli", tree.complexity = 4,
+                         learning.rate = 0.0005, bag.fraction = 0.5)
+
+summary(egg.tc5.lr01)
+
+# plot
+gbm.plot(egg.tc5.lr01, rug = T, n.plots = 12, write.title = FALSE)
+gbm.plot.fits(egg.tc5.lr01)
+
+# interactions
+find.int <- gbm.interactions(egg.tc5.lr01)
+find.int$interactions
+find.int$rank.list
+
+# plot pairwise interactions:
+gbm.perspec(egg.tc5.lr01, 7, 5)#y.range=c(15,20), z.range=c(0,0.6))
+```
+
+
+```{r brt2}
+
+library(dismo)
+tst<- read.csv("./data/HSC/egg_use_availability_equal_samples.csv")
+tst2<- read.csv("./data/HSC/Eggs_HSC_ncss_export.csv") %>% 
+  mutate(Date= as.Date(Date,  origin="1899-12-30", tz="America/Los_Angeles")) %>% 
+  select(-starts_with("Random"))
+  #mutate(Date= as.POSIXct(Date * (60*60*24),  origin="1899-12-30", tz="America/Los_Angeles")) # for datetime
+head(tst2)
+
+head(tst)
+tst1 <- tst %>% sample_n(size=200, replace=FALSE) # create training set
+
+egg.tc5.lr01 <- gbm.step(data=tst1, gbm.x = 3:5, gbm.y = 1,
+                         family = "bernoulli", tree.complexity = 5,
+                         learning.rate = 0.01, bag.fraction = 0.5)
+
+summary(egg.tc5.lr01)
+
+# plot
+gbm.plot(egg.tc5.lr01, rug = T, n.plots = 8, write.title = FALSE)
+gbm.plot.fits(egg.tc5.lr01)
+
+# interactions
+find.int <- gbm.interactions(egg.tc5.lr01)
+find.int$interactions
+find.int$rank.list
+
+# plot pairwise interactions:
+plot_ly(gbm.perspec(egg.tc5.lr01, 1, 2))#y.range=c(15,20), z.range=c(0,0.6))
+
+# alternate version with use vs. available
+tst2$UseBinary <- ifelse(tst2$Data_Type=="USE", 1, 0)
+tst2_brt <- select(tst2, UseBinary, 10, 5:8, 11:23) %>% 
+  filter(!is.na(Sub_Cont_6),
+         !Meso_Type=="")
+
+egg2.tc5.lr01 <- gbm.step(data=tst2_brt, gbm.x = 2:19, gbm.y = 1,
+                         family = "bernoulli", tree.complexity = 5,
+                         learning.rate = 0.01, bag.fraction = 0.5)
+
+summary(egg2.tc5.lr01)
+
+# plot
+gbm.plot(egg2.tc5.lr01, rug = T, n.plots = 12, write.title = FALSE)
+gbm.plot.fits(egg2.tc5.lr01)
+
+# interactions
+find.int <- gbm.interactions(egg2.tc5.lr01)
+find.int$interactions
+find.int$rank.list
+
+# plot pairwise interactions:
+gbm.perspec(egg2.tc5.lr01, 5,4)#y.range=c(15,20), z.range=c(0,0.6))
+
+
+```
+
+## Logistic `glm` Model
+
+Now let's run a model. See [here](http://stats.idre.ucla.edu/r/dae/logit-regression/)
+
+```{r model}
+
+# get data
+d <- nfdf %>% select(ovipos, site, WY, DOWY, air.7:level.7dL)
 
 # fix index
-d$river_id <- as.integer(as.factor(d$river))
+d$river_id <- as.integer(as.factor(d$site))
+d$WY_id <- as.integer(as.factor(d$WY))
+
+xtabs(~ovipos + DOY, data = d)
+xtabs(~ovipos + days_wo_ppt, data = d)
+
+# factor the data that is factorable
+str(d)
+d$site <- factor(d$site)
+d$WY <- factor(d$WY)
+
+# run a logistic binomial response model
+mylogit <- glm(ovipos ~ river_id + WY_id + DOY + airmin.7 + days_wo_ppt + 
+                 level.avg + temp.min.7 + level.7dL, data = d, family = "binomial")
+summary(mylogit)
+
+```
+
+So **Deviance residuals** are a measure of model fit, and `AIC = 80.093`. For every one unit change in **`airmin.7`** there is a log-odds of oviposition (breeding) increase of 0.91, whereas a change in the water temperature (`temp.min.7`) yields a strong negative change in the log odds of oviposition by -1.114.
+
+You can calculate the confidence intervals using the `confint` function.
+
+```{r}
+confint(mylogit)
+
+library(aod)
+# Can use a wald.test to test coefficients in order they appear in model
+aod::wald.test(b= coef(mylogit), Sigma = vcov(mylogit), Terms=c(1,4))
+
+## odds ratios and 95% CI
+exp(cbind(OR = coef(mylogit), confint(mylogit)))
+
+```
+
+```{r}
+# simulate and predict
+
+newdata1 <- d %>% select(ovipos, site, DOY:WY_id) %>% group_by(WY_id, river_id, DOY) %>% 
+  summarize(airmin.7 = mean(airmin.7),
+            days_wo_ppt = mean(days_wo_ppt),
+            level.avg = mean(level.avg),
+            temp.min.7 = mean(temp.min.7),
+            level.7dL = mean(level.7dL))
+
+# predict
+newdata1$rankP <- predict(mylogit, newdata = newdata1, type = "response")
+newdata1
+ggplot() + geom_point(data=newdata1, aes(x=DOY, y=rankP, color=as.factor(river_id), shape=as.factor(WY_id)), size=3)
+```
+
+
+
+## Rethinking Model
+
+```{r varying effects, eval=F, echo=T}
+library(rethinking)
+
+# get data
+d <- nfdf %>% select(ovipos, site, WY, DOY, airmin.7, days_wo_ppt, level.avg, temp.min.7, level.7dL)
+
+# fix index
+d$river_id <- as.integer(as.factor(d$site))
+d$WY_id <- as.integer(as.factor(d$WY))
 
 # rename outcome so it doesn't have a dot in it
 dlist <- list(
-    river = d$river,
-    yday = d$yday,
-    year = d$year
+    river = d$river_id,
+    DOY = d$DOY,
+    WY = d$WY_id,
+    airmin7 = d$airmin.7,
+    days_wo_ppt = d$days_wo_ppt,
+    level = d$level.avg,
+    tempmin7 = d$temp.min.7,
+    lev7delt = d$level.7dL,
+    ovipos = d$ovipos
 )
+
+m2.stan <- map2stan(
+    alist(
+        y ~ dbinom( n , p ),
+        logit(p) <- a + bP*pirateL + bV*victimL +
+            bA*pirateA + bPA*pirateL*pirateA ,
+        a ~ dnorm(0,10),
+        bP ~ dnorm(0,5),
+        bV ~ dnorm(0,5),
+        bA ~ dnorm(0,5),
+        bPA ~ dnorm(0,5)
+    ) , data=d , warmup=1000 , iter=1e4 )
 
 m1a2 <- map2stan(
     alist(
-        ovipos ~ dbinom( 1 , p ),
+        ovipos ~ dbinom( DOY , p ),
         logit(p) <- a + a_river[river],
         a ~ dnorm(0,10),
         a_river[river] ~ dnorm(0,sigma),
@@ -92,13 +399,3 @@ points( 1:60 , p2.mean )
 abline( h=logistic(coef(m1a2)[1]) , lty=2 ) # plot line for 'a'
 
 ```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
