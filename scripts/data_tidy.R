@@ -13,20 +13,36 @@ library(lubridate)
 
 source("scripts/data_load.R")
 
-# TIDY --------------------------------------------------------------------
+# TIDY MASTER -------------------------------------------------------------
 
 # Select sites, rm "grp" col, drop unused factors
-hrly2 <- hrly2 %>% select(-grp) %>% filter(!site %in% c("TUO", "CLA")) %>% 
+hrly2 <- hrly2 %>% select(-grp, -WY, -wyd, -year, -yday) %>% filter(!site %in% c("TUO", "CLA")) %>% 
   mutate(site = factor(site))
+
+colnames(hrly2) <- tolower(colnames(hrly2)) # rename colnames
 
 levels(hrly2$site) # check factor levels
 
+# re add water year info with function
+
+hrly2 <- add_WYD(hrly2, "datetime")
+
+
 summary(hrly2)
+
+# rm attr() from col
+attr(x = hrly2$DOY, 'label') <- NULL
+  attr(MyData[[deparse(as.name(var))]], "ATT_2") <- NULL
+}
 
 
 # QUICK PLOTS -------------------------------------------------------------
 
 ggplot() + 
-  geom_line(data=hrly2, aes(x=Datetime, y=Level, color=site)) +
+  geom_line(data=hrly2, aes(x=datetime, y=level, color=site)) +
   facet_grid(site~., scales = "free_y")
+
+
+# ADD SITES ---------------------------------------------------------------
+
 

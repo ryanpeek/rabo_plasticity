@@ -34,10 +34,11 @@ dowy<-function(YYYYMMDD_HMS) {   # Dates must be POSIXct
 # add DOY to df
 add_WYD <- function(df, datecolumn){ # provide either number or quoted name for date POSIXct col
   datecolumn=datecolumn
-  df["DOY"] <- sapply(df[,c(datecolumn)], yday)
-  df["WY"] <- sapply(df[,c(datecolumn)], wtr_yr)
-  df["DOWY"] <- sapply(df[,c(datecolumn)], dowy)
+  df["DOY"] <- as.integer(sapply(df[,c(datecolumn)], yday))
+  df["WY"] <- as.integer(sapply(df[,c(datecolumn)], wtr_yr))
+  df["DOWY"] <- as.integer(sapply(df[,c(datecolumn)], dowy))
   return(df)
+  
 }
 
 
