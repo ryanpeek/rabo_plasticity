@@ -18,31 +18,31 @@ source("scripts/data_load.R")
 # Select sites, rm "grp" col, drop unused factors
 hrly2 <- hrly2 %>% select(-grp, -WY, -wyd, -year, -yday) %>% filter(!site %in% c("TUO", "CLA")) %>% 
   mutate(site = factor(site))
-
-colnames(hrly2) <- tolower(colnames(hrly2)) # rename colnames
-
 levels(hrly2$site) # check factor levels
 
-# re add water year info with function
+# make all cols lower case for ease of typing
+colnames(hrly2) <- tolower(colnames(hrly2))
 
+# add water year info with function
 hrly2 <- add_WYD(hrly2, "datetime")
-
-
 summary(hrly2)
-
-# rm attr() from col
-attr(x = hrly2$DOY, 'label') <- NULL
-  attr(MyData[[deparse(as.name(var))]], "ATT_2") <- NULL
-}
-
 
 # QUICK PLOTS -------------------------------------------------------------
 
 ggplot() + 
-  geom_line(data=hrly2, aes(x=datetime, y=level, color=site)) +
+  geom_path(data=hrly2, aes(x=datetime, y=level, color=site, group=WY)) +
   facet_grid(site~., scales = "free_y")
 
+# ADD SITE UPDATES ---------------------------------------------------------
 
-# ADD SITES ---------------------------------------------------------------
+# combine and rm NA's
+raw_updated<-bind_rows(nfa, mfa, sfy, nfy, nfy_baro, nfa_baro)
+raw_updated <- raw_updated %>% filter(!is.na(level))
+
+# make some cols factors
+fxs <- c("site", "compensated", "type")
+raw_updated[fxs] <- lapply(raw_updated[fxs], as.factor) 
+
+summary(raw_updated)
 
 

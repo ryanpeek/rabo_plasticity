@@ -29,21 +29,22 @@ source("./scripts/functions/f_format_solinst.R")
 
 # read in formatted NFA
 nfa <- read_rds("data/2016_NFA_solinst_06_07_formatted.rds")
-#head(nfa)
+nfa$type <- "solinst"
 
 nfa_baro <- read_rds("data/2016_NFA_BARO_06_07_full_formatted.rds")
-#summary(nfa_baro)
+nfa_baro$type <- "baro"
 
 # read in formatted NFY
 nfy <- read_rds("data/2016_NFY_solinst_08_19_formatted.rds")
+nfy$type <- "solinst"
 
 nfy_baro <- read_rds("data/2016_NFY_BARO_08_19_full_formatted.rds")
-#summary(nfy_baro)
+nfy_baro$type <- "baro"
 
 # read in formatted SFY
 sfy <- read_rds("data/2016_SFY_solinst_06_01_formatted.rds")
-#summary(sfy[,1:5])
+sfy$type <- "solinst"
 
 # read in formatted MFA
 mfa <- read_rds("data/2016_MFA_solinst_08_22_formatted.rds")
-#summary(mfa[,1:5])
+mfa$type <- "solinst"
