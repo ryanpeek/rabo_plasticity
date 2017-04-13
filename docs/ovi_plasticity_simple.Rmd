@@ -5,9 +5,27 @@ date: "Updated: `r format(Sys.Date())`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, echo=F}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = normalizePath("../"))
+
+# make things beep on error and finish:
+options(error = function(){    # Beep on error
+  beepr::beep()
+  Sys.sleep(1)
+  }
+ )
+
+.Last <- function() {          # Beep on exiting session
+  beepr::beep(2) # beep(8) is awesome but too long
+  Sys.sleep(1)
+}
+
+# if you want to reset these so they don't run: options(error=NULL)
+
+```
+
+
 ```
 
 ## What Permits Plasticity?
