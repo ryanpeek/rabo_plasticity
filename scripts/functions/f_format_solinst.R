@@ -1,17 +1,18 @@
 ## FORMAT RAW CSV FILES FROM LOGGERS
-## 2013-May-18
 
-## Set working directory before running function
-## file will output to current dir.
+# Wed Apr 12 22:44:16 2017 ------------------------------
 
-format_solinst<-function(skip){
+source("./scripts/functions/f_doy.R")
+
+format_solinst<-function(skip, site, compensated=FALSE){
 
   library(lubridate, warn.conflicts = F)
   library(readr, warn.conflicts = F)
   library(dplyr, warn.conflicts = F)
   
-  skip=skip
-  
+  skip = skip
+  rivsite = site # for adding a site name
+  comps<-compensated
   cat("formatting as solinst logger...\n\n")
   
   # choose a file, use the raw csv logger output
@@ -21,18 +22,18 @@ format_solinst<-function(skip){
   file$datetime<-paste(file$Date," ",file$Time,sep="")
   print(head(file))
   
-  cat("\n","Enter date format: MDY or YMD?","\n\n") # prompt 
-  z<-scan(what="character",n=1)
-  cat("\n","Enter time format: HMS or HM?","\n\n")
-  y<-scan(what="character",n=1)
-  if(z=="MDY"& y=="HMS"){
+  cat("\n","Enter date format: 1=MDY or 2=YMD?","\n\n") # prompt 
+  z<-scan(what="integer",n=1)
+  cat("\n","Enter time format: 3=HMS or 4=HM?","\n\n")
+  y<-scan(what="integer",n=1)
+  if(z==1 & y==3){
     ## use lubridate with MDY
     file$datetime<-mdy_hms(file$datetime) # convert to POSIXct  
   } else{
-    if(z=="MDY" & y=="HM"){
+    if(z==1 & y==4){
       file$datetime<-mdy_hm(file$datetime) # convert to POSIXct  
     } else {
-      if(z=="YMD" & y=="HM"){
+      if(z==2 & y==4){
         file$datetime<-ymd_hm(file$datetime) # convert to POSIXct
       } else{
         file$datetime<-ymd_hms(file$datetime) # convert to POSIXct
@@ -42,10 +43,20 @@ format_solinst<-function(skip){
   cat("date converted \n")
   
   # select data
-  cols_to_keep <- c("datetime", "Level", "Temperature")
-  df<-as.data.frame(select(file, one_of(cols_to_keep)))
+  df<-as.data.frame(file)
+  colnames(df) <- tolower(colnames(df))
+  cols_to_keep <- c("datetime", "level", "temperature")
+  df<-as.data.frame(select(df, one_of(cols_to_keep)))
   colnames(df)<-c("datetime","level","temp_C")
-  summary(df)
+  
+  # add cols for site and compensation
+  df <- df %>% 
+    mutate(site=rivsite,
+           compensated = ifelse(comps==TRUE, "Y", "N"))
+  
+  df <- add_WYD(df, "datetime")
+  
+  print(summary(df))
   
   require(tools) 
   filename<-basename(file_path_sans_ext(inputfile))
