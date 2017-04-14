@@ -28,23 +28,43 @@ source("./scripts/functions/f_format_solinst.R")
 # format_solinst(skip = 11, site = "MFA", compensated = FALSE) 
 
 # read in formatted NFA
-nfa <- read_rds("data/2016_NFA_solinst_06_07_formatted.rds")
+nfa <- read_rds("data/hydro/2016_NFA_solinst_06_07_formatted.rds")
 nfa$type <- "solinst"
 
-nfa_baro <- read_rds("data/2016_NFA_BARO_06_07_full_formatted.rds")
+nfa_baro <- read_rds("data/hydro/2016_NFA_BARO_06_07_full_formatted.rds")
 nfa_baro$type <- "baro"
 
 # read in formatted NFY
-nfy <- read_rds("data/2016_NFY_solinst_08_19_formatted.rds")
+nfy <- read_rds("data/hydro/2016_NFY_solinst_08_19_formatted.rds")
 nfy$type <- "solinst"
 
-nfy_baro <- read_rds("data/2016_NFY_BARO_08_19_full_formatted.rds")
+nfy_baro <- read_rds("data/hydro/2016_NFY_BARO_08_19_full_formatted.rds")
 nfy_baro$type <- "baro"
 
 # read in formatted SFY
-sfy <- read_rds("data/2016_SFY_solinst_06_01_formatted.rds")
+sfy <- read_rds("data/hydro/2016_SFY_solinst_06_01_formatted.rds")
 sfy$type <- "solinst"
 
 # read in formatted MFA
-mfa <- read_rds("data/2016_MFA_solinst_08_22_formatted.rds")
+mfa <- read_rds("data/hydro/2016_MFA_solinst_08_22_formatted.rds")
 mfa$type <- "solinst"
+
+
+# ADJ LEVELS (RESETS) -----------------------------------------------------
+
+
+# fix MFA level first (it's 200 and needs adj)
+summary(mfa)
+mfa$level <- mfa$level - 206
+
+# adj NFA level
+summary(nfa)
+nfa$level <- nfa$level - 0.41
+
+# adj SFY (drop about 0.5)
+summary(sfy)
+sfy$level <- sfy$level - 0.62
+
+# adj NFY (drop about 0.5)
+summary(nfy)
+nfy$level <- nfy$level - 0.71

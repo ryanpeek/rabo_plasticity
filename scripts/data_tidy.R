@@ -28,39 +28,18 @@ hrly2 <- hrly2 %>% rename(temp_C = temperature)
 hrly2 <- add_WYD(hrly2, "datetime")
 summary(hrly2)
 
-# QUICK PLOTS -------------------------------------------------------------
-
-ggplot() + 
-  geom_path(data=hrly2, aes(x=datetime, y=level, color=site, group=WY)) +
-  facet_grid(site~., scales = "free_y")
-
-# SITE ONLY
-ggplot() + 
-  geom_path(data=hrly2[hrly2$site=="MFA",], aes(x=datetime, y=level, color=site, group=WY)) +
-  facet_grid(site~., scales = "free_y")
+# # QUICK PLOTS -------------------------------------------------------------
+# 
+# ggplot() + 
+#   geom_path(data=hrly2, aes(x=datetime, y=level, color=site, group=WY)) +
+#   facet_grid(site~., scales = "free_y")
+# 
+# # SITE ONLY
+# ggplot() + 
+#   geom_path(data=hrly2[hrly2$site=="MFA",], aes(x=datetime, y=level, color=site, group=WY)) +
+#   facet_grid(site~., scales = "free_y")
 
 # ADD SITE UPDATES ---------------------------------------------------------
-
-# fix MFA level first (it's 200 and needs adj)
-summary(mfa)
-mfa$level <- mfa$level - 206
-
-# adj NFA level
-summary(nfa)
-nfa$level <- nfa$level - 0.27
-
-# adj SFY (drop about 0.5)
-summary(sfy)
-sfy$level <- sfy$level - 0.53
-
-# adj NFY (drop about 0.5)
-summary(nfy)
-nfy$level <- nfy$level - 0.6
-
-# test plot
-ggplot() + 
-  geom_path(data=nfy, aes(x=datetime, y=level, color=site, group=WY)) +
-  facet_grid(site~., scales = "free_y")
 
 # combine and rm NA's
 raw_updated<-bind_rows(nfa, mfa, sfy, nfy, nfy_baro, nfa_baro)
@@ -117,19 +96,21 @@ raw_hrly_baro <- add_WYD(raw_hrly_baro, "datetime") %>%
 hrly_to_add <- bind_rows(raw_hrly, raw_hrly_baro) %>% 
   mutate(compensated="N")
 
-# Plot the Hourly Temperature
-ggplot()+
-  geom_line(data=hrly_to_add[hrly_to_add$type=="solinst",], aes(datetime,temp_C, color=site, group=WY))+
-  facet_grid(site~., scales = "free_y") + 
-  theme_bw()+ggtitle("Avg Hourly Water Temperature (C)")
-        
-# Plot the Hourly Stage
-ggplot()+
-  geom_line(data=hrly_to_add[hrly_to_add$type=="solinst",],aes(datetime,level, color=site, group=WY))+
-  facet_grid(site~., scales = "free_y") + 
-  theme_bw()+ggtitle("Avg Hourly Stage (m)")
-
-
+# # Hrly New Data Plots ----------------------------------------------------
+# 
+# # Temp
+# ggplot()+
+#   geom_line(data=hrly_to_add[hrly_to_add$type=="solinst",], aes(datetime,temp_C, color=site, group=WY))+
+#   facet_grid(site~., scales = "free_y") + 
+#   theme_bw()+ggtitle("Avg Hourly Water Temperature (C)")
+#         
+# # Hourly Stage
+# ggplot()+
+#   geom_line(data=hrly_to_add[hrly_to_add$type=="solinst",],aes(datetime,level, color=site, group=WY))+
+#   facet_grid(site~., scales = "free_y") + 
+#   theme_bw()+ggtitle("Avg Hourly Stage (m)")
+# 
+# 
 # JOIN WITH MASTER DATA ---------------------------------------------------
 
 summary(hrly_to_add)
@@ -137,43 +118,128 @@ summary(hrly2)
 
 names(hrly_to_add)
 names(hrly2)
-fulldf <- bind_rows(hrly2, hrly_to_add)
-glimpse(fulldf)
+hr.df <- bind_rows(hrly2, hrly_to_add)
+glimpse(hr.df)
 
 # convert back to factors
 fxs <- c("site", "compensated", "type")
-fulldf[fxs] <- lapply(fulldf[fxs], as.factor) 
-str(fulldf)
-summary(fulldf)
+hr.df[fxs] <- lapply(hr.df[fxs], as.factor) 
+str(hr.df)
+summary(hr.df)
+
+
+# MASTER HOURLY PLOTS -----------------------------------------------------
 
 # quick plot of hrly all
 ggplot() + 
-  geom_line(data=fulldf[fulldf$type=="solinst",], 
+  geom_line(data=hr.df[hr.df$type=="solinst",], 
             aes(x=datetime, y=level, color=site, group=WY)) +
   facet_grid(site~., scales = "free_y")
 
+# plot a single SITE
+ggplot() + 
+  geom_path(data=hr.df[hr.df$site=="SFY" & hr.df$type=="solinst" & hr.df$WY>2014,], aes(x=datetime, y=level, group=WY), color="maroon")
+
+write_rds(hr.df, path = "data/2011-2016_solinst_mainstem_hrly.rds")
+save(hr.df, file="data/2011-2016_solinst_mainstem_hrly.rda")
+
+# CLEAN ENVIRONMENT -------------------------------------------------------
+
+rm(hrly_to_add, hrly2, mfa, nfa, nfa_baro, nfy, nfy_baro, raw_hrly, raw_updated, raw_hrly_baro, sfy)
 
 # MAKE A DAILY DATASET ----------------------------------------------------
 
-## Make Daily dataset
+# For SOLINST-RIVER
 require(caTools)
-df.dy<-df %>%
-  group_by(site, year, mon, yday)%>%
-  dplyr::summarize("lev_avg"=mean(Level,na.rm=TRUE),
-                   "lev_min"=min(Level,na.rm=TRUE),
-                   "lev_max"=max(Level,na.rm=TRUE),
-                   "temp_avg"=mean(Temperature,na.rm=TRUE),
-                   "temp_min"=min(Temperature,na.rm=TRUE),
-                   "temp_max"=max(Temperature,na.rm=TRUE)) %>%
-  mutate("lev_7_avg"= runmean(lev.avg, k=7, endrule="mean",align="center"),
-         "lev_7_min"= runmin(lev.min, k=7, align="center"),
-         "lev_7_max"= runmax(lev.max, k=7, align="center"),
-         "temp_7_avg"= runmean(temp.avg, k=7, endrule="mean",align="center"),
-         "temp_7_min"= runmin(temp.min, k=7, align="center"),
-         "temp_7_max"= runmax(temp.max, k=7, align="center")) %>%
-  mutate("datetime"=ymd(strptime(paste0(year,"-", mon,"-", yday),
+dy.sol.df<-hr.df %>%
+  filter(type=="solinst") %>% 
+  mutate(year = year(datetime),
+         mon = month(datetime)) %>% 
+  group_by(site, year, mon, DOY)%>%
+  dplyr::summarize("lev_avg"=mean(level,na.rm=TRUE),
+                   "lev_min"=min(level,na.rm=TRUE),
+                   "lev_max"=max(level,na.rm=TRUE),
+                   "temp_avg"=mean(temp_C,na.rm=TRUE),
+                   "temp_min"=min(temp_C,na.rm=TRUE),
+                   "temp_max"=max(temp_C,na.rm=TRUE)) %>%
+  mutate("lev_7_avg"= runmean(lev_avg, k=7, endrule="mean",align="center"),
+         "lev_7_min"= runmin(lev_min, k=7, align="center"),
+         "lev_7_max"= runmax(lev_max, k=7, align="center"),
+         "temp_7_avg"= runmean(temp_avg, k=7, endrule="mean",align="center"),
+         "temp_7_min"= runmin(temp_min, k=7, align="center"),
+         "temp_7_max"= runmax(temp_max, k=7, align="center")) %>%
+  mutate("datetime"=ymd(strptime(paste0(year,"-", mon,"-", DOY),
                                  format = "%Y-%m-%j"))) %>%
-  select(datetime,year,mon,yday,lev_avg:temp_7_max) %>%  
-  as.data.frame()
+  add_WYD(., "datetime") %>%
+  mutate(type="solinst") %>% 
+  as.data.frame() %>% 
+  select(site, datetime, type, -year, -mon, lev_avg:temp_7_max, DOY, WY, DOWY)
 
-s(df.dy)
+# For SOLINST-BAROS
+
+dy.baro.df<-hr.df %>%
+  filter(type=="baro") %>% 
+  mutate(year = year(datetime),
+         mon = month(datetime)) %>% 
+  group_by(site, year, mon, DOY)%>%
+  dplyr::summarize("lev_avg"=mean(level,na.rm=TRUE),
+                   "lev_min"=min(level,na.rm=TRUE),
+                   "lev_max"=max(level,na.rm=TRUE),
+                   "temp_avg"=mean(temp_C,na.rm=TRUE),
+                   "temp_min"=min(temp_C,na.rm=TRUE),
+                   "temp_max"=max(temp_C,na.rm=TRUE)) %>%
+  mutate("lev_7_avg"= runmean(lev_avg, k=7, endrule="mean",align="center"),
+         "lev_7_min"= runmin(lev_min, k=7, align="center"),
+         "lev_7_max"= runmax(lev_max, k=7, align="center"),
+         "temp_7_avg"= runmean(temp_avg, k=7, endrule="mean",align="center"),
+         "temp_7_min"= runmin(temp_min, k=7, align="center"),
+         "temp_7_max"= runmax(temp_max, k=7, align="center")) %>%
+  mutate("datetime"=ymd(strptime(paste0(year,"-", mon,"-", DOY),
+                                 format = "%Y-%m-%j"))) %>%
+  add_WYD(., "datetime") %>%
+  mutate(type="baro") %>% 
+  as.data.frame() %>% 
+  select(site, datetime, type, -year, -mon, lev_avg:temp_7_max, DOY, WY, DOWY)
+
+# Combine
+# bind the two hourly datasets
+dy.df <- bind_rows(dy.sol.df, dy.baro.df)
+
+# remove temp df
+rm(dy.sol.df, dy.baro.df)
+
+# MASTER DAILY PLOTS -------------------------------------------------------
+
+# Stage: Daily Avg
+ggplot() + 
+  geom_line(data=dy.df[dy.df$type=="solinst",], 
+            aes(x=datetime, y=lev_avg, color=site, group=WY)) +
+  facet_grid(site~., scales = "free_y")
+
+# Stage: 7-Day Avg
+ggplot() + 
+  geom_line(data=dy.df[dy.df$type=="solinst",], 
+            aes(x=datetime, y=lev_7_avg, color=site, group=WY)) +
+  facet_grid(site~., scales = "free_y")
+
+# WTemp: Daily Avg
+ggplot() + 
+  geom_line(data=dy.df[dy.df$type=="solinst",], 
+            aes(x=datetime, y=temp_avg, color=site, group=WY)) +
+  facet_grid(site~., scales = "free_y")
+
+# WTemp: 7-Day Avg
+ggplot() + 
+  geom_line(data=dy.df[dy.df$type=="solinst",], 
+            aes(x=datetime, y=temp_7_avg, color=site, group=WY)) +
+  geom_ribbon(data=dy.df, aes(x=datetime, ymin=10,ymax=12), fill="orange", alpha=0.4) +
+  facet_grid(site~.)
+
+# plot a single SITE
+ggplot() + 
+  geom_path(data=dy.df[dy.df$site=="NFA" & dy.df$type=="solinst",], aes(x=datetime, y=lev_7_avg, group=WY), color="maroon")
+
+# write out data
+write_rds(dy.df, path = "data/2011-2016_solinst_mainstem_daily.rds")
+save(dy.df, file="data/2011-2016_solinst_mainstem_daily.rda")
+
