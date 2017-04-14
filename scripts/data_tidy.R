@@ -140,7 +140,7 @@ ggplot() +
 ggplot() + 
   geom_path(data=hr.df[hr.df$site=="SFY" & hr.df$type=="solinst" & hr.df$WY>2014,], aes(x=datetime, y=level, group=WY), color="maroon")
 
-write_rds(hr.df, path = "data/2011-2016_solinst_mainstem_hrly.rds")
+write_rds(hr.df, path = "data/2011-2016_solinst_mainstem_hrly.rds", compress = "gz")
 save(hr.df, file="data/2011-2016_solinst_mainstem_hrly.rda")
 
 # CLEAN ENVIRONMENT -------------------------------------------------------
@@ -240,6 +240,6 @@ ggplot() +
   geom_path(data=dy.df[dy.df$site=="NFA" & dy.df$type=="solinst",], aes(x=datetime, y=lev_7_avg, group=WY), color="maroon")
 
 # write out data
-write_rds(dy.df, path = "data/2011-2016_solinst_mainstem_daily.rds")
+write_rds(dy.df, path = "data/2011-2016_solinst_mainstem_daily.rds", compress = "gz")
 save(dy.df, file="data/2011-2016_solinst_mainstem_daily.rda")
 
