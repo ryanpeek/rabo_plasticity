@@ -25,9 +25,6 @@ options(error = function(){    # Beep on error
 
 ```
 
-
-```
-
 ## What Permits Plasticity?
 
 How might variable environmental conditions provide cues for breeding timing from year to year? For frogs that have an amazing plasticity in breeding oviposition timing (inital deposition of eggs) such as *Rana boylii*, there must be certain thresholds that exist (a cutoff which makes oviposition not possible, physiologically). However, beyond a given threshold, there also may be certain cues which act as important environmental markers in dynamic environments such as rivers. By utilizing both, it is likely that the odds of reproductive success improve, and over time this results in evolutionary/selective success. For example, frogs that breed to soon are more likely to have eggs scoured out by late spring storms or have longer developmental/hatching times because water temperatures are lower. Frogs breeding later in the season may trade off greater egg deposition and hatching success with later metamorphosis and lower overwinter survival. 
@@ -40,8 +37,7 @@ Using two different methods, we compare the variation explained by these metrics
 
 
 ### The Data
-
-```{r data}
+```{r get data}
 library(tidyverse)
 library(lubridate)
 

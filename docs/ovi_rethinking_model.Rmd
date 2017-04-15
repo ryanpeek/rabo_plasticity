@@ -35,7 +35,7 @@ hydroDat <- read_csv("data/oviposition_glm_stgtemps_long.csv") %>%
          site=as.factor(toupper(site)))
 
 # add WY Index
-wys<-read_csv(file = "data/cdec_wy_index.csv") %>% filter(Basin=="SAC")
+wys<-read_csv(file = "data/cdec_wy_index.csv") %>% filter(Basin=="SAC") %>% as.data.frame()
 
 ```
 

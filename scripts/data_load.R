@@ -14,7 +14,7 @@ glimpse(hrly2)
 # hobo dataset
 load("./data/hydro/hobo_raw15min.rda")
 
-# ADD OTHER DATA ----------------------------------------------------------
+# ADD LOGGER DATA ----------------------------------------------------------
 
 # read in various solinst CSV's
 source("./scripts/functions/f_format_solinst.R")
@@ -49,9 +49,7 @@ sfy$type <- "solinst"
 mfa <- read_rds("data/hydro/2016_MFA_solinst_08_22_formatted.rds")
 mfa$type <- "solinst"
 
-
-# ADJ LEVELS (RESETS) -----------------------------------------------------
-
+# ADJ SOLINST LEVELS (RESETS) -----------------------------------------------
 
 # fix MFA level first (it's 200 and needs adj)
 summary(mfa)
@@ -68,3 +66,17 @@ sfy$level <- sfy$level - 0.62
 # adj NFY (drop about 0.5)
 summary(nfy)
 nfy$level <- nfy$level - 0.71
+
+
+# ADD WATER YEAR INFO -----------------------------------------------------
+
+# add WY Index
+wys<-read_csv(file = "data/cdec_wy_index.csv") %>% filter(Basin=="SAC") %>% as.data.frame()
+
+# ADD FROG BREED DATA -----------------------------------------------------
+
+frogBreed <- read_csv("data/oviposition_start_mainstem_sites.csv") %>% 
+  mutate(estim_strt=mdy(estim_strt),
+         obs_strt=mdy(obs_strt)) %>%
+  select(Site:WYT, REG:totalEM)
+
