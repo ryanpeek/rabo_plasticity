@@ -6,10 +6,12 @@ library(tidyverse)
 library(lubridate)
 library(purrr)  # for map(), reduce()
 
-# CDEC FUNCTION TO DOWNLOAD CDEC
+# CDEC FUNCTION TO DOWNLOAD CDEC and Add WY
 source("scripts/functions/f_getCDEC.R")
+source("scripts/functions/f_doy.R")
 
 # GET NFY  ----------------------------------------------------------------
+
 # avg daily Air = (30), daily ppt incr = (45)
 
 # Downieville (DNV)
@@ -26,65 +28,147 @@ dnv_air <- DNV %>% select(station, datetime, sensor_30) %>%
   rename(air_F = sensor_30)
 rm(DNV)
 
+DNV_air_ppt<- select(dnv_ppt, -station) %>% inner_join(dnv_air, by="datetime") %>% select(station, everything())
 
-# GROUPED (PGE) -----------------------------------------------------------
+rm(dnv_ppt, dnv_air)
 
-# Central Hydro 1 (PP3): http://cdec.water.ca.gov/cgi-progs/queryDgroups?s=PP3 (PPT INC = 45)
+# MFA & RUB ---------------------------------------------------------------
+
+# avg daily Air = (30), daily ppt incr = (45)
+
+# Georgetown (GTW)
+
+# ppt
+get.CDEC(station = "GTW",duration = "D",sensor = 45, start = "2010-10-01",end = "2017-04-01",csv = F) 
+ppt <- GTW %>% select(station, datetime, sensor_45) %>% 
+  rename(ppt_in = sensor_45)
+rm(GTW)
+
+# air
+get.CDEC(station = "GTW",duration = "D",sensor = 30, start = "2010-10-01",end = "2017-04-01",csv = F)
+air <- GTW %>% select(station, datetime, sensor_30) %>% 
+  rename(air_F = sensor_30)
+rm(GTW)
+
+GTW_air_ppt<- select(ppt, -station) %>% inner_join(air, by="datetime") %>% select(station, everything())
+
+rm(ppt, air)
+
+cdec_ppt_air <- bind_rows(DNV_air_ppt, GTW_air_ppt)
+rm(GTW_air_ppt, DNV_air_ppt)
+
+# NFA ---------------------------------------------------------------
+
+# avg daily Air = (30), daily ppt incr = (45)
+
+# Sugar Pine (SGP)
+
+# ppt
+get.CDEC(station = "SGP",duration = "D",sensor = 45, start = "2010-10-01",end = "2017-04-01",csv = F) 
+ppt <- SGP %>% select(station, datetime, sensor_45) %>% 
+  rename(ppt_in = sensor_45)
+rm(SGP)
+
+# air
+get.CDEC(station = "SGP",duration = "D",sensor = 30, start = "2010-10-01",end = "2017-04-01",csv = F)
+air <- SGP %>% select(station, datetime, sensor_30) %>% 
+  rename(air_F = sensor_30)
+rm(SGP)
+
+air_ppt<- select(ppt, -station) %>% inner_join(air, by="datetime") %>% select(station, everything())
+
+rm(ppt, air)
+
+
+# SAVE MASTER CDEC AIR_PPT ------------------------------------------------
+
+cdec_ppt_air <- bind_rows(cdec_ppt_air, air_ppt)
+rm(air_ppt)
+
+# add sites
+cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="DNV","NFY",NA)
+cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="GTW","MFA",cdec_ppt_air$site)
+cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="SGP","NFA",cdec_ppt_air$site)
+
+save(cdec_ppt_air, file = "data/sites_cdec_daily_ppt_air_2010_2017.rda")
+
+# SFY ---------------------------------------------------------------
+
+# hourly Air = (4), hourly ppt acc = (2)
+
+# White Cloud (WTC)
+
+# ppt
+get.CDEC(station = "WTC",duration = "H",sensor = 2, start = "2010-10-01",end = "2017-04-01",csv = F) 
+ppt <- WTC %>% select(station, datetime, sensor_2) %>% 
+  rename(ppt_in_accum = sensor_2)
+rm(WTC)
+
+# air
+get.CDEC(station = "WTC",duration = "H",sensor = 4, start = "2010-10-01",end = "2017-04-01",csv = F)
+air <- WTC %>% select(station, datetime, sensor_4) %>% 
+  rename(air_F = sensor_4)
+rm(WTC)
+
+WTC_air_ppt<- select(ppt, -station) %>% inner_join(air, by="datetime") %>% select(station, everything())
+
+rm(ppt, air)
+write_rds(air_ppt, path = "data/WTC_cdec_hourly_2010_2017.rds", compress = "gz")
+save(WTC_air_ppt, file = "data/WTC_cdec_hourly_2010_2017.rda")
+
+# CDEC STATIONS -----------------------------------------------------
+
+sta.cdec <- read.csv("data/cdec_all_stations.csv")
+
+# PG&E Grouped: Central Hydro 1 (PP3): http://cdec.water.ca.gov/cgi-progs/queryDgroups?s=PP3 (PPT INC = 45)
 # includes: LSP, BRE, DPH, DRC, HLH, FBS
 
-# INDIVIDUAL STATIONS -----------------------------------------------------
-
 # NFA
-# Blue Canyon (BLC) : http://cdec.water.ca.gov/cdecstation2/?sta=BLC
-# Sugar Pine (SGP): http://cdec.water.ca.gov/cdecstation2/?sta=SGP
-# Blue Canyon DWR-2 (BYM): http://cdec.water.ca.gov/cdecstation2/?sta=BYM
-# Colfax (CLF): http://cdec.water.ca.gov/cdecstation2/?sta=CLF
+# Blue Canyon (BLC) 
+# Sugar Pine (SGP)
+# Blue Canyon DWR-2 (BYM)
+# Colfax (CLF)
 
 # MFA
-# Foresthill R S (FRH): http://cdec.water.ca.gov/cdecstation2/?sta=FRH
-# Georgetown USBR (GTW): http://cdec.water.ca.gov/cdecstation2/?sta=GTW
-# Georgetown USFS (GRG): http://cdec.water.ca.gov/cdecstation2/?sta=GRG
+# Foresthill R S (FRH)
+# Georgetown USBR (GTW)
+# Georgetown USFS (GRG)
 # Pilot Hill (PIH) (has relative humidity and temp)
+
 # NFY
-# Downieville DWR (DNV): http://cdec.water.ca.gov/cdecstation2/?sta=DNV
-# Downieville NWS (DWV): http://cdec.water.ca.gov/cdecstation2/?sta=DWV
-# Sierra City DWR (SRC): http://cdec.water.ca.gov/cdecstation2/?sta=SRC
+# Downieville DWR (DNV)
+# Downieville NWS (DWV)
+# Sierra City DWR (SRC)
 
 # M/S YUBA
-# Bowman Lake DWR (BOL): http://cdec.water.ca.gov/cdecstation2/?sta=BOL
-# Our House Dam DWR (OHD): http://cdec.water.ca.gov/cdecstation2/?sta=OHD
-# Deer Ck Forebay PG&E (DRC): http://cdec.water.ca.gov/cdecstation2/?sta=DRC
+# Bowman Lake DWR (BOL)
+# Our House Dam DWR (OHD)
+# Deer Ck Forebay PG&E (DRC)
 
 # RUB
-# Hell Hole USFS (HLH): http://cdec.water.ca.gov/cdecstation2/?sta=HLH
+# Hell Hole USFS (HLH)
 
+# READ IN MANUAL DOWNLOADED PPT CSVs --------------------------------------
 
-# STATION METADATA --------------------------------------------------------
-
-sta.cdec <- read.csv("data/cdec_ppt_stations_metadata.csv")
-
-
-# READ IN PPT CSVs --------------------------------------------------------
-
-folder <- "data/precip"
+folder <- "data/cdec_ppt"
 files_list <- dir(path = folder, pattern = "*.csv") # list files
 
-#Read in files & add column with the filename then combine
+# Read in files & add column with the filename then combine
 data <- data_frame(filename = files_list) %>% # create df of files
   mutate(file_contents = map(filename, # read files in
                              ~read_csv(file.path(folder, .), skip=2, col_names = c("date", "pst", "ppt_in"), col_types = "ccd"))) %>% 
-  unnest # this unlists all the list of dataframe
-
-# add column names
-colnames(data)<-c("filename", "siteID", "year", "month", "day", "hour24", "min", "windDir",   "windSpeed_m_s", "windSteady", "baro_hPa", "temp_C_2m", "temp_C_10m", "temp_C_towertop", "rel_humid", "precip_intens_mm_hr")
+  unnest %>% # unlist all to df
+  select(-pst) %>% 
+  mutate(date=as.Date(data$date,"%Y%m%d"),
+         ppt_mm=ppt_in*25.4) %>% 
+  add_WYD(., "date")
 
 dim(data)
 
-# save this as an rds file and an rda file!
-mloa_2001 <- data # remember with rda we can't rename the dataframe when we "load()". 
+write_rds(data, path = "data/cdec_ppt_daily_2005_2017.rds", compress = "gz")
 
-dplyr::write_rds(mloa_2001, path = "data_output/mauna_loa_met_2001_minute.rds", compress = "gz")
-
+ggplot() + geom_point(data=data[data$WY>=2011 & data$filename=="SGP_2005-2017.csv",], aes(x=DOWY, y=ppt_in, group=WY, color=as.factor(WY)), alpha=0.5) + scale_y_continuous(limits = c(0,8)) + 
+  geom_area(data=data[data$WY>=2011 & data$filename=="SGP_2005-2017.csv",], aes(x=DOWY, y=ppt_in, group=WY, color=as.factor(WY)), alpha=0.5)
 
 # BARO PRESSURE -----------------------------------------------------------
 # Wunder
