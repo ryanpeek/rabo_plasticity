@@ -1,0 +1,21 @@
+Compensating with weather (Wunderground Data)
+(http://www.solinst.com/Prod/3001/Levelogger-User-Guide/8-Data-Compensation/8-1-Manual-Barometric-Compensation.html)
+Barometric data can be collected on site using a recording barometer or from a local weather station. To accomplish an accurate manual barometric compensation, the atmospheric pressure station should not be greater than 20 miles (30 km) away and within an elevation change of 1000 ft (300 m). In addition, the date and time of the barometric data should cover the range of data collected by the Levelogger. If setting up the barometer, set the recording interval to that of the Levelogger sampling interval or some multiple of the Levelogger interval. To compensate submerged Levelogger data using barometric data collected from an on site barometric datalogger or a nearby weather station, these steps must be taken:
+
+1)Export both the Levelogger data file and the barometric file to a spreadsheet.
+
+2)In the spreadsheet, ensure both files are using the same units. If your Levelogger data was recorded in m, cm, or ft, convert the barometric data column from its barometric measurement units (typically atm, mm Hg, psi, mbar or kPa) to feet or meters of water column equivalent using the conversion factors in Table 8-1. (There is also the option to initially set up your Levelogger Edge or Levelogger Junior Edge to record in psi, kPa, or mbar. This makes compensation using other atmospheric pressure devices easier.)
+
+Table 8-1 Common Barometric Units to Water column Equivalent Conversions
+Barometric unit		Water column equivalent (ft)	Water column equivalent (m)
+1 psi				2.3108							0.7043
+1 atm				33.959							10.351
+1 kPa				0.3352							0.1022
+1 mm - Hg			0.04469							0.01362
+1 in - Hg			1.1330							 
+1 mbar				0.03352							0.01022
+
+3)Once the units for each column are the same, subtract the barometric column from the Levelogger data to get the true net water level recorded by the Levelogger Edge.
+
+
+\\TS-02\Recsn_Limb\FieldData\Logger Data\CompensationWithWeatherData.txt

@@ -28,16 +28,23 @@ hrly2 <- hrly2 %>% rename(temp_C = temperature)
 hrly2 <- add_WYD(hrly2, "datetime")
 summary(hrly2)
 
-# # QUICK PLOTS -------------------------------------------------------------
-# 
-# ggplot() + 
-#   geom_path(data=hrly2, aes(x=datetime, y=level, color=site, group=WY)) +
-#   facet_grid(site~., scales = "free_y")
-# 
-# # SITE ONLY
-# ggplot() + 
-#   geom_path(data=hrly2[hrly2$site=="MFA",], aes(x=datetime, y=level, color=site, group=WY)) +
-#   facet_grid(site~., scales = "free_y")
+# QUICK PLOTS -------------------------------------------------------------
+
+# these are 2011-2014 (only compensated data)
+ggplot() +
+  geom_path(data=hrly2[hrly2$compensated=="Y",], 
+            aes(x=datetime, y=level, color=site, group=WY)) + 
+  scale_x_datetime(date_breaks = "4 months", date_labels = "%Y-%b")+
+  xlab("") +ylab("Stage (m)")+ 
+  facet_grid(site~., scales = "free_y")
+
+# these are 2011-2015 (all data): need to compensated Aug-1-2014-current date
+ggplot() +
+  geom_path(data=hrly2, 
+            aes(x=datetime, y=level, color=site, group=WY)) + 
+  scale_x_datetime(date_breaks = "4 months", date_labels = "%Y-%b")+
+  xlab("") +ylab("Stage (m)")+ 
+  facet_grid(site~., scales = "free_y")
 
 # ADD SITE UPDATES ---------------------------------------------------------
 
@@ -49,7 +56,7 @@ raw_updated <- raw_updated %>% filter(!is.na(level))
 fxs <- c("site", "compensated", "type")
 raw_updated[fxs] <- lapply(raw_updated[fxs], as.factor) 
 
-# MAKE HOURLY -------------------------------------------------------------
+# HOURLY: MAKE DATASET ---------------------------------------------------
 
 ## Make Hourly dataset: solinst
 raw_hrly<-raw_updated %>% filter(type=="solinst") %>% 
@@ -96,8 +103,7 @@ raw_hrly_baro <- add_WYD(raw_hrly_baro, "datetime") %>%
 hrly_to_add <- bind_rows(raw_hrly, raw_hrly_baro) %>% 
   mutate(compensated="N")
 
-# # Hrly New Data Plots ----------------------------------------------------
-# 
+# HOURLY: NEW DATA PLOTS -------------------------------------------------
 # # Temp
 # ggplot()+
 #   geom_line(data=hrly_to_add[hrly_to_add$type=="solinst",], aes(datetime,temp_C, color=site, group=WY))+
@@ -111,7 +117,7 @@ hrly_to_add <- bind_rows(raw_hrly, raw_hrly_baro) %>%
 #   theme_bw()+ggtitle("Avg Hourly Stage (m)")
 # 
 # 
-# JOIN WITH MASTER DATA ---------------------------------------------------
+# HOURLY: JOIN WITH MASTER HOURLY DATA ------------------------------------
 
 summary(hrly_to_add)
 summary(hrly2)
@@ -127,8 +133,24 @@ hr.df[fxs] <- lapply(hr.df[fxs], as.factor)
 str(hr.df)
 summary(hr.df)
 
+# need to fix baro for NFA and NFY
 
-# MASTER HOURLY PLOTS -----------------------------------------------------
+# NFA
+hr.df$level[which(hr.df$site=="NFA" & hr.df$type=="baro" & hr.df$level>4)] <- hr.df$level[which(hr.df$site=="NFA" & hr.df$type=="baro" & hr.df$level>4)]-9
+
+# plot NFA
+filter(hr.df, type=="baro", site=="NFA") %>%  ggplot()+geom_line(aes(x=datetime, y=level, color=site, group=WY))
+hr.df$level[which(hr.df$site=="NFA" & hr.df$type=="baro" & hr.df$level>3)] <- hr.df$level[which(hr.df$site=="NFA" & hr.df$type=="baro" & hr.df$level>3)]-3
+# plot NFA
+filter(hr.df, type=="baro", site=="NFA") %>%  ggplot()+geom_line(aes(x=datetime, y=level, color=site, group=WY))
+
+# NFY
+hr.df$level[which(hr.df$site=="NFY" & hr.df$type=="baro")] <- hr.df$level[which(hr.df$site=="NFY" & hr.df$type=="baro")]-9
+
+# plot NFY
+filter(hr.df, type=="baro", site=="NFY") %>%  ggplot()+geom_line(aes(x=datetime, y=level, color=site, group=WY))
+
+#save(hr.df, file="data/2011-2016_solinst_mainstem_hrly.rda")
 
 # quick plot of hrly all
 ggplot() + 
@@ -136,18 +158,13 @@ ggplot() +
             aes(x=datetime, y=level, color=site, group=WY)) +
   facet_grid(site~., scales = "free_y")
 
-# plot a single SITE
-ggplot() + 
-  geom_path(data=hr.df[hr.df$site=="SFY" & hr.df$type=="solinst" & hr.df$WY>2014,], aes(x=datetime, y=level, group=WY), color="maroon")
 
-write_rds(hr.df, path = "data/2011-2016_solinst_mainstem_hrly.rds", compress = "gz")
-save(hr.df, file="data/2011-2016_solinst_mainstem_hrly.rda")
 
-# CLEAN ENVIRONMENT -------------------------------------------------------
+# HOURLY: CLEAN ENVIRONMENT -----------------------------------------------
 
 rm(hrly_to_add, hrly2, mfa, nfa, nfa_baro, nfy, nfy_baro, raw_hrly, raw_updated, raw_hrly_baro, sfy)
 
-# MAKE A DAILY DATASET ----------------------------------------------------
+# DAILY: MAKE DATASET ----------------------------------------------
 
 # For SOLINST-RIVER
 require(caTools)
@@ -208,7 +225,10 @@ dy.df <- bind_rows(dy.sol.df, dy.baro.df)
 # remove temp df
 rm(dy.sol.df, dy.baro.df)
 
-# MASTER DAILY PLOTS -------------------------------------------------------
+# write out data
+#save(dy.df, file="data/2011-2016_solinst_mainstem_daily.rda")
+
+# DAILY: PLOTS ---------------------------------------------------
 
 # Stage: Daily Avg
 ggplot() + 
@@ -239,64 +259,4 @@ ggplot() +
 ggplot() + 
   geom_path(data=dy.df[dy.df$site=="NFA" & dy.df$type=="solinst",], aes(x=datetime, y=lev_7_avg, group=WY), color="maroon")
 
-# write out data
-write_rds(dy.df, path = "data/2011-2016_solinst_mainstem_daily.rds", compress = "gz")
-save(dy.df, file="data/2011-2016_solinst_mainstem_daily.rda")
 
-
-
-
-# JOIN FROG DAT WITH HYDRO DAT --------------------------------------------
-
-
-data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
-  mutate(site = as.factor(site))
-data1 <- add_WYD(data1, "Date") %>% select(-WYT) %>% 
-  mutate(DOY = as.integer(DOY),
-         WY = as.integer(WY),
-         DOWY = as.integer(DOWY))
-
-
-
-# join the data together:
-data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
-  mutate(site = as.factor(site))
-data1 <- add_WYD(data1, "Date") %>% select(-WYT) %>% 
-  mutate(DOY = as.integer(DOY),
-         WY = as.integer(WY),
-         DOWY = as.integer(DOWY))
-
-# join with WY index data
-data1 <- inner_join(data1, wys[,c(1,4:5)], by="WY")
-
-names(data1)
-
-# select only data between May-Jun 
-nfdf <- data1 %>% #filter(site %in% sites) %>% 
-  filter(DOY>120, DOY<182) %>% 
-  select(Date, site, obs_strt, totalEM, DOY:DOWY, air.7:level.7dL, WYsum, Index, -ppt2_in, -days_wo_ppt2)
-
-summary(nfdf)
-
-# remove NAs:
-nfdf2 <- nfdf %>% 
-  filter(!is.na(air.7), 
-         !is.na(level.avg))
-summary(nfdf2)
-
-# add binary 1 or 0 for breeding
-nfdf2 <- nfdf2 %>% mutate(ovipos=as.integer(ifelse(is.na(totalEM), 0, 1)))
-names(nfdf2)
-
-# get data
-d1 <- nfdf2 %>% dplyr::select(ovipos, site, WYsum, Index, DOWY, air.7:level.7dL) %>% 
-  filter(!is.na(ppt_in))
-summary(d1)
-
-# refactor the sites to drop unused factors
-d1$site <- factor(d1$site)
-
-# drop factors
-d2 <- dplyr::select(d1, -site) %>% setNames(., gsub("\\.", "_", colnames(.))) %>% as.data.frame
-names(d2)
-```

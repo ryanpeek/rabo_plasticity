@@ -7,7 +7,7 @@ library(tidyverse)
 # READ in MASTER DATA -----------------------------------------------------
 
 # get hrly2 dataset
-load("./data/hydro/2011-2015_solinst_mainstem_hourly_compensated.rda") 
+load("./data/2011-2015_solinst_mainstem_hourly_compensated.rda") 
 
 glimpse(hrly2)
 
