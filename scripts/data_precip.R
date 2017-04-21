@@ -10,6 +10,7 @@ library(purrr)  # for map(), reduce()
 source("scripts/functions/f_getCDEC.R")
 source("scripts/functions/f_doy.R")
 
+
 # GET NFY  ----------------------------------------------------------------
 
 # avg daily Air = (30), daily ppt incr = (45)
@@ -85,12 +86,18 @@ rm(ppt, air)
 cdec_ppt_air <- bind_rows(cdec_ppt_air, air_ppt)
 rm(air_ppt)
 
+cdec_ppt_air <- cdec_ppt_air %>% 
+  mutate(CDEC_air_C = convertTemp(air_F, unit = "F", convert="C"),
+         CDEC_ppt_mm = ppt_in*25.4) %>% rename(date=datetime) %>% 
+  select(station, date, CDEC_air_C, CDEC_ppt_mm) %>% 
+  add_WYD(., datecolumn = "date")
+
 # add sites
 cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="DNV","NFY",NA)
 cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="GTW","MFA",cdec_ppt_air$site)
-cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="SGP","NFA",cdec_ppt_air$site)
+cdec_ppt_air$site<-as.factor(ifelse(cdec_ppt_air$station=="SGP","NFA",cdec_ppt_air$site))
 
-save(cdec_ppt_air, file = "data/sites_cdec_daily_ppt_air_2010_2017.rda")
+save(cdec_ppt_air, file = "data/cdec_sites_daily_ppt_air_2010_2017.rda")
 
 # SFY ---------------------------------------------------------------
 
@@ -148,7 +155,98 @@ sta.cdec <- read.csv("data/cdec_all_stations.csv")
 # RUB
 # Hell Hole USFS (HLH)
 
-# READ IN MANUAL DOWNLOADED PPT CSVs --------------------------------------
+
+
+# SEASONALITY COLWELL ANALYSIS --------------------------------------------
+
+load(file = "data/cdec_sites_daily_ppt_air_2010_2017.rda")
+
+summary(cdec_ppt_air)
+ggplot() + geom_line(data=cdec_ppt_air, aes(x=date, y=CDEC_ppt_mm, color=site)) + facet_grid(.~site)
+
+df.NFY <- cdec_ppt_air %>% filter(site=="NFY") %>% 
+  select(date, CDEC_ppt_mm) %>% rename(Date=date, Q=CDEC_ppt_mm)
+
+df.NFA <- cdec_ppt_air %>% filter(site=="NFA") %>% 
+  select(date, CDEC_ppt_mm) %>% rename(Date=date, Q=CDEC_ppt_mm)
+
+df.MFA <- cdec_ppt_air %>% filter(site=="MFA") %>% 
+  select(date, CDEC_ppt_mm) %>% rename(Date=date, Q=CDEC_ppt_mm)
+
+## SEASONALITY WITH COLWELL
+# From Tonkin et al 2017: M (Contingency) as metric of seasonality. 
+# To standardize the role of seasonality in relation to overall predictability,
+# we divided (M) by overall predictability (the sum of (M) and constancy (C)
+
+library(hydrostats)
+Col.NFY<-hydrostats::Colwells(df.NFY)
+Col.NFA<-hydrostats::Colwells(df.NFA)
+Col.MFA<-hydrostats::Colwells(df.MFA)
+(seasonality <- tibble(site=c("NFY","NFA","MFA"), MP_metric=c(Col.NFY$MP, Col.NFA$MP, Col.MFA$MP)))
+
+# WAVELET ANALYSIS --------------------------------------------------------
+
+library(WaveletComp)
+
+# NFY
+dfNFY <- cdec_ppt_air %>% filter(site=="NFY") %>%
+  mutate(mon=lubridate::month(date)) %>% 
+  filter(!is.na(CDEC_ppt_mm)) %>% group_by(WY, mon) %>% 
+  summarize(mon_ppt_mm=sum(CDEC_ppt_mm)) %>% as.data.frame()
+
+nfy.w <- analyze.wavelet(dfNFY, my.series = 2)
+
+wt.image(nfy.w, n.levels = 74, main="NFY Seasonality of Precip.",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (months)", periodlab = "period (months)")
+
+# NFA
+dfNFA <- cdec_ppt_air %>% filter(site=="NFA") %>%
+  mutate(mon=lubridate::month(date)) %>% 
+  filter(!is.na(CDEC_ppt_mm)) %>% group_by(WY, mon) %>% 
+  summarize(mon_ppt_mm=sum(CDEC_ppt_mm)) %>% as.data.frame()
+
+nfa.w <- analyze.wavelet(dfNFA, my.series = 2)
+
+wt.image(nfa.w, n.levels = 74,main = "NFA Seasonality of Precip.",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (months)", periodlab = "period (months)")
+
+# MFA
+dfMFA <- cdec_ppt_air %>% filter(site=="MFA") %>%
+  mutate(mon=lubridate::month(date)) %>% 
+  filter(!is.na(CDEC_ppt_mm)) %>% group_by(WY, mon) %>% 
+  summarize(mon_ppt_mm=sum(CDEC_ppt_mm)) %>% as.data.frame()
+
+mfa.w <- analyze.wavelet(dfMFA, my.series = 2)
+
+wt.image(mfa.w, n.levels = 74,main = "MFA Seasonality of Precip.",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (months)", periodlab = "period (months)")
+
+wt.avg(mfa.w)
+wt.avg(nfa.w)
+wt.avg(nfy.w)
+
+# Power Plots:
+plotNFY<-nfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+ggplot() + geom_line(data=plotNFY, aes(x=Period, y=Power.avg))+geom_point(data=plotNFY, aes(x=Period,y=Power.avg), col=ifelse(plotNFY$Power.avg.pval<0.05, "red", "blue"))
+
+plotNFA<-nfa.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+ggplot() + geom_line(data=plotNFA, aes(x=Period, y=Power.avg))+geom_point(data=plotNFA, aes(x=Period,y=Power.avg), col=ifelse(plotNFA$Power.avg.pval<0.05, "red", "blue")) 
+
+plotMFA<-mfa.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+# all 3
+ggplot() + geom_line(data=plotNFA, aes(x=Period, y=Power.avg), col="black")+
+  geom_line(data=plotNFY, aes(x=Period, y=Power.avg), col="blue",lty=2) +
+  geom_line(data=plotMFA, aes(x=Period, y=Power.avg), col="red",lty=3, lwd=2) +
+  scale_x_continuous(breaks=c(seq(0,24,3)))
+
+
+
+
+# PURRR MANUAL DOWNLOADED PPT CSVs --------------------------------------
 
 folder <- "data/cdec_ppt"
 files_list <- dir(path = folder, pattern = "*.csv") # list files
@@ -169,9 +267,4 @@ write_rds(data, path = "data/cdec_ppt_daily_2005_2017.rds", compress = "gz")
 
 ggplot() + geom_point(data=data[data$WY>=2011 & data$filename=="SGP_2005-2017.csv",], aes(x=DOWY, y=ppt_in, group=WY, color=as.factor(WY)), alpha=0.5) + scale_y_continuous(limits = c(0,8)) + 
   geom_area(data=data[data$WY>=2011 & data$filename=="SGP_2005-2017.csv",], aes(x=DOWY, y=ppt_in, group=WY, color=as.factor(WY)), alpha=0.5)
-
-# BARO PRESSURE -----------------------------------------------------------
-# Wunder
-# KCADOWNI2 (downieville) back to Apr 1 2013
-# KCAALTA3 (alta) back to Apr 1 2004
 

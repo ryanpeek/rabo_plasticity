@@ -1,5 +1,11 @@
 # master_data_view
 
+#wavelet theory and Colwells M (contingency) / P (predictability) [equal to sum of M and C constancy]
+# see Tonkin et al. 2017 (hydrostats: Colwell's transformation)
+# WaveletComp
+library(hydrostats)
+library(WaveletComp) # used the Morlet wavelet as mother wavelet
+
 # Tue Apr 18 16:34:55 2017 ------------------------------
 
 # just load and look at most current master data set. Built off
@@ -12,8 +18,11 @@ library(lubridate)
 load("data/2011-2016_solinst_mainstem_hrly.rda")
 load("data/2011-2016_solinst_mainstem_daily.rda")
 load("data/wunder/RUB_KCAFORES14_2010-10-01_2016-09-30.rda")
-load("data/NFA_gamebaro_hrly_2011-2016.rda")
-load("data/NFY_gamebaro_hrly_2011-2017.rda")
+load("data/wunder/NFY_KCADOWNI2_2010-10-01_2017-04-19.rda")
+load("data/cdec_sites_daily_ppt_air_2010_2017.rda")
+
+#load("data/NFA_gamebaro_hrly_2011-2016.rda")
+#load("data/NFY_gamebaro_hrly_2011-2017.rda")
 
 # HOURLY ------------------------------------------------------------------
 

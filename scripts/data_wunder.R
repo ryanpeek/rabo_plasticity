@@ -23,16 +23,18 @@ source("scripts/functions/f_wunderground_clean.R") # clean data
       # KCAFORES21: Mar 2011
       # KCAFORES22: Jan 2012
 #   MALAKOFF: MNVYC1
-#   NFY: Saddleback, CA Headwaters of Goodyear Ck: MSLEC1
+#   NFY: 
+      # KCADOWNI2: Aug 2010 (downieville)
+      # MSLEC1: Saddleback, CA Headwaters of Goodyear Ck
 #   STAN: MSPWC1  
 #   DAVIS: KCADAVIS17 (slide hill park)
 
 # SCRAPE WUNDERGROUND DATA ------------------------------------------------
 
-site <- "NFA"
-station<-'KCAFORES6' # station name here
-start<-'2012-03-01' 
-end<-'2016-09-30'
+site <- "NFY"
+station<-'KCADOWNI2' # station name here
+start<-'2010-10-01' 
+end<-'2017-04-19'
 
 # create vector of dates
 date.range <- seq.Date(from=as.Date(start), to=as.Date(end), by='1 day')
