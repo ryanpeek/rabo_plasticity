@@ -10,6 +10,7 @@ library(lubridate)
 
 # RUN DATA_LOAD.R ---------------------------------------------------------
 
+source("scripts/functions/f_doy.R") # for adding WY info
 source("scripts/data_load.R")
 
 # TIDY MASTER -------------------------------------------------------------
