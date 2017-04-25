@@ -85,6 +85,81 @@ rm(ppt, air)
 
 
 # Our House Dam (OHD):  avg daily Air = (30), daily ppt incr = (45) (only since 2015), raintip (precip event) = 16 since 2006
+
+# GET PPT (15 min) convert to DAILY
+get.CDEC(station = "OHD",duration = "E",sensor = 16, start = "2010-10-01",end = "2017-04-01",csv = F) 
+
+ppt <- OHD %>% select(station, datetime, sensor_16) %>% 
+  add_WYD(., "datetime") %>%
+  rename(ppt_in_accum = sensor_16) %>% 
+  group_by(WY, DOWY) %>% 
+  mutate(ppt_in_accum = ifelse(DOWY==1, 0, ppt_in_accum))
+
+# needs to be filtered and fixed
+ppt$ppt_in_accum <- ifelse(ppt$ppt_in_accum>500, NA, ppt$ppt_in_accum)
+ppt$ppt_in_accum <- ifelse(ppt$ppt_in_accum<0, NA, ppt$ppt_in_accum)
+#ppt <- ppt %>% filter(!is.na(ppt_in_accum)) %>% as.data.frame()
+
+# make 15 min into DAILY
+ppt2 <- ppt %>% 
+  mutate(date=as.Date(floor_date(datetime, unit = "day"))) %>% 
+  group_by(date, station) %>% 
+  arrange(date) %>% 
+  summarize("ppt_increm" = max(ppt_in_accum, na.rm = T)) %>% 
+  add_WYD(., "date")
+
+# fix errors in data
+ppt2$ppt_increm[24]<-3.43
+ppt2$ppt_increm[2309:2317]<-70
+ppt2$ppt_increm[730]<-43.70
+
+# get daily incremental and not cumulative
+ppt2$ppt_in <- abs(ppt2$ppt_increm - lag(x=ppt2$ppt_increm, n=1, default=0))
+ppt2$ppt_in <- ifelse(ppt2$DOWY == 1, 0, ppt2$ppt_in)
+
+# quick plot
+ggplot() + geom_line(data=ppt2, aes(x=date, y=ppt_increm))+
+  geom_line(data=ppt2, aes(x=date, y=ppt_in), col="blue")
+
+ggplot() + geom_line(data=ppt2, aes(x=date, y=ppt_in))
+
+rm(OHD)
+
+# air
+get.CDEC(station = "OHD",duration = "D",sensor = 30, start = "2010-10-01",end = "2017-04-01",csv = F)
+air <- OHD %>% select(station, datetime, sensor_30) %>% 
+  rename(air_F = sensor_30,
+         date = datetime) %>% 
+  mutate(date = as.Date(date))
+rm(OHD)
+
+
+air_ppt<- select(ppt2, -station, -ppt_increm) %>% right_join(air, by="date") %>% select(station, everything())
+
+air_ppt <- air_ppt %>% 
+  mutate(CDEC_air_C = convertTemp(air_F, unit = "F", convert="C"),
+         CDEC_ppt_mm = ppt_in*25.4) %>% 
+  select(station, date, CDEC_air_C, CDEC_ppt_mm) %>% 
+  add_WYD(., datecolumn = "date") %>% 
+  mutate(site=as.factor("MFY"))
+summary(air_ppt)
+
+
+rm(ppt2, air)
+
+# remove old MFY
+cdec_ppt_air <- filter(cdec_ppt_air, !site=="MFY")
+table(cdec_ppt_air$site)
+
+# bind with master
+cdec_ppt_air <- cdec_ppt_air %>% 
+  mutate(date = as.Date(date)) %>% 
+  bind_rows(., air_ppt) # add MFY
+
+
+# SFY ---------------------------------------------------------------------
+
+
 # Lake Spaulding (LSP) at 5,146ft :  avg daily Air = (30), daily ppt incr = (45), rel humidity (EVENT) = 12
 
 # ppt
