@@ -81,23 +81,45 @@ air_ppt<- select(ppt, -station) %>% inner_join(air, by="datetime") %>% select(st
 rm(ppt, air)
 
 
-# SAVE MASTER CDEC AIR_PPT ------------------------------------------------
+# MFY/SFY -----------------------------------------------------------------
 
-cdec_ppt_air <- bind_rows(cdec_ppt_air, air_ppt)
-rm(air_ppt)
 
-cdec_ppt_air <- cdec_ppt_air %>% 
+# Our House Dam (OHD):  avg daily Air = (30), daily ppt incr = (45) (only since 2015), raintip (precip event) = 16 since 2006
+# Lake Spaulding (LSP) at 5,146ft :  avg daily Air = (30), daily ppt incr = (45), rel humidity (EVENT) = 12
+
+# ppt
+get.CDEC(station = "LSP",duration = "D",sensor = 45, start = "2010-10-01",end = "2017-04-01",csv = F) 
+ppt <- LSP %>% select(station, datetime, sensor_45) %>% 
+  rename(ppt_in = sensor_45)
+rm(LSP)
+
+# air
+get.CDEC(station = "LSP",duration = "D",sensor = 30, start = "2010-10-01",end = "2017-04-01",csv = F)
+air <- LSP %>% select(station, datetime, sensor_30) %>% 
+  rename(air_F = sensor_30)
+rm(LSP)
+
+air_ppt<- select(ppt, -station) %>% inner_join(air, by="datetime") %>% select(station, everything())
+
+rm(ppt, air)
+
+air_ppt2 <- air_ppt %>% 
   mutate(CDEC_air_C = convertTemp(air_F, unit = "F", convert="C"),
          CDEC_ppt_mm = ppt_in*25.4) %>% rename(date=datetime) %>% 
   select(station, date, CDEC_air_C, CDEC_ppt_mm) %>% 
-  add_WYD(., datecolumn = "date")
+  add_WYD(., datecolumn = "date") %>% 
+  mutate(site=as.factor("SFY"))
+summary(air_ppt2)
 
-# add sites
-cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="DNV","NFY",NA)
-cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="GTW","MFA",cdec_ppt_air$site)
-cdec_ppt_air$site<-as.factor(ifelse(cdec_ppt_air$station=="SGP","NFA",cdec_ppt_air$site))
+air_ppt_MFY <- air_ppt %>% 
+  mutate(CDEC_air_C = convertTemp(air_F, unit = "F", convert="C"),
+         CDEC_ppt_mm = ppt_in*25.4) %>% rename(date=datetime) %>% 
+  select(station, date, CDEC_air_C, CDEC_ppt_mm) %>% 
+  add_WYD(., datecolumn = "date") %>% 
+  mutate(site=as.factor("MFY"))
 
-save(cdec_ppt_air, file = "data/cdec_sites_daily_ppt_air_2010_2017.rda")
+air_ppt_YUB <- bind_rows(air_ppt2, air_ppt_MFY)
+air_ppt_YUB$site <- as.factor(air_ppt_YUB$site)
 
 # SFY ---------------------------------------------------------------
 
@@ -120,8 +142,39 @@ rm(WTC)
 WTC_air_ppt<- select(ppt, -station) %>% inner_join(air, by="datetime") %>% select(station, everything())
 
 rm(ppt, air)
-write_rds(air_ppt, path = "data/WTC_cdec_hourly_2010_2017.rds", compress = "gz")
-save(WTC_air_ppt, file = "data/WTC_cdec_hourly_2010_2017.rda")
+
+
+# SAVE MASTER CDEC AIR_PPT ------------------------------------------------
+
+# existing file is here:
+load("data/cdec_sites_daily_ppt_air_2010_2017.rda")
+
+cdec_ppt_air <- bind_rows(cdec_ppt_air, air_ppt_YUB) # add YUB
+
+# add RUB (duplicate Georgetown data)
+RUB <- filter(cdec_ppt_air, site=="MFA") %>% mutate(site="RUB")
+
+cdec_ppt_air <- bind_rows(cdec_ppt_air, RUB)
+
+
+#rm(air_ppt)
+
+# cdec_ppt_air <- cdec_ppt_air %>% 
+#   mutate(CDEC_air_C = convertTemp(air_F, unit = "F", convert="C"),
+#          CDEC_ppt_mm = ppt_in*25.4) %>% rename(date=datetime) %>% 
+#   select(station, date, CDEC_air_C, CDEC_ppt_mm) %>% 
+#   add_WYD(., datecolumn = "date")
+
+# add sites
+# cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="DNV","NFY",NA) # NFY
+# cdec_ppt_air$site<-ifelse(cdec_ppt_air$station=="GTW","MFA",cdec_ppt_air$site) # MFA/RUB
+# cdec_ppt_air$site<-as.factor(ifelse(cdec_ppt_air$station=="SGP","NFA",cdec_ppt_air$site)) # NFA
+# cdec_ppt_air$site<-as.factor(ifelse(cdec_ppt_air$station=="LSP","SFY",cdec_ppt_air$site)) # SFY
+
+
+save(cdec_ppt_air, file = "data/cdec_sites_daily_ppt_air_2010_2017.rda")
+
+
 
 # CDEC STATIONS -----------------------------------------------------
 

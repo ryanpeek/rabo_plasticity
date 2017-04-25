@@ -23,13 +23,14 @@ ggplot() +
 
 # plot a single SITE
 ggplot() + 
-  geom_path(data=hr.df2[hr.df2$site=="NFY" & hr.df2$WY>2014,], aes(x=datetime, y=level, group=WY), color="dodgerblue") +
-  geom_path(data=hr.df2[hr.df2$site=="NFY" & hr.df2$WY>2014,], aes(x=datetime, y=level_comp, group=WY), color="black")
+  geom_path(data=hr.df2[hr.df2$site=="NFY" & hr.df2$WY>2014,], aes(x=datetime, y=level, group=WY), color="dodgerblue") + # uncompensated
+  geom_path(data=hr.df2[hr.df2$site=="NFY" & hr.df2$WY>2014,], aes(x=datetime, y=level_comp, group=WY), color="black") # compensated
 
 
 # CREATE DAILY FROM THE ADJ HOURLY DATA -----------------------------------
 
 library(RcppRoll) # rolling means/max/mins
+
 #library(padr) # used to pad for continuous distrib of time/vector
 
 # For SOLINST-RIVER: Make a Daily dataset
@@ -57,22 +58,41 @@ dy.sol.df<-hr.df2 %>% mutate(date=floor_date(datetime, unit = "day")) %>%
          "W_air_7_min"=roll_minr(W_air_min, n=7, fill=NA),
          "W_air_7_max"=roll_maxr(W_air_max, n=7, fill=NA)) %>% 
   add_WYD(., "date") %>%
+  mutate(date=ymd(date)) %>% 
   arrange(site, date) %>% as.data.frame()
 
-# CDEC AIR_PPT DAILY & 7-DAY ----------------------------------------------
+# ADD THE CDEC DATA -------------------------------------------------------
 
-### NOT WORKING
-# Add 7-day averages:
-cdec.dy <- cdec_ppt_air %>%
-  filter(!is.na(CDEC_air_C),
-         !is.na(CDEC_ppt_mm)) %>% 
+cdec<- cdec_ppt_air %>%  select(station, site, date:CDEC_ppt_mm) %>% 
+  mutate(CDEC_air_C = round(CDEC_air_C, digits = 2),
+         CDEC_ppt_mm = round(CDEC_ppt_mm, digits=2),
+         date= ymd(date)) %>%  # needs to be Date format
+  #mutate(date=floor_date(date, unit = "day")) %>% 
   group_by(site, date) %>%
-  mutate("ppt_7_avg_mm"= roll_meanr(CDEC_ppt_mm, n=7, fill=NA),
+  mutate("CDEC_ppt_7_avg"= roll_meanr(CDEC_ppt_mm, n=7, na.rm = T),
          "CDEC_air_7_avg"= roll_meanr(CDEC_air_C, n=7, fill=NA),
          "CDEC_air_7_min"= roll_minr(CDEC_air_C, n=7, fill=NA),
-         "CDEC_air_7_max"= roll_maxr(CDEC_air_C, n=7, fill=NA))# %>%
-  add_WYD(., "date") %>%
+         "CDEC_air_7_max"= roll_maxr(CDEC_air_C, n=7, fill=NA)) %>%
+  arrange(site,date)
+summary(cdec)
+  
+  
+master_dat <- left_join(dy.sol.df, cdec, by = c("date", "site"))
+
+summary(master_dat)
+
+# ADD 7-Day to CDEC -------------------------------------------------------
+
+# Add 7-day averages:
+master_df <- master_dat %>%
+  group_by(site, date) %>%
+  mutate("ppt_7_avg_mm"= roll_meanr(CDEC_ppt_mm, n=7, fill=NA, na.rm = TRUE),
+         "CDEC_air_7_avg"= roll_meanr(CDEC_air_C, n=7, fill=NA),
+         "CDEC_air_7_min"= roll_minr(CDEC_air_C, n=7, fill=NA),
+         "CDEC_air_7_max"= roll_maxr(CDEC_air_C, n=7, fill=NA)) %>%
   arrange(site, date) %>% as.data.frame()
+summary(master_df)
+
 
 # DAILY -------------------------------------------------------------------
 
