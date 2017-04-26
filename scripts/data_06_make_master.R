@@ -120,114 +120,110 @@ geom_bar(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=CDE
 
 # MAKE MASTER DAT ---------------------------------------------------------
 
-master_dat <- left_join(dy.sol.df, cdec, by = c("date", "site"))
-summary(master_dat)
+master_dat1 <- left_join(dy.sol.df, cdec, by = c("date", "site"))
+summary(master_dat1)
 
 # FILTER TO SPRING MONTHS -------------------------------------------------
 
 selected_mons <- c(4,5,6,7)
-master_dat <- master_dat %>% filter(month(date) %in% selected_mons)
+master_dat1 <- master_dat1 %>% filter(month(date) %in% selected_mons)
 
 library(viridis)
 
 ggplot() + 
-  geom_line(data=master_dat[master_dat$site=="NFA" & master_dat$WY==2014,], aes(x=date, y=temp_7_min, group=WY), color="blue")+
-  geom_line(data=master_dat[master_dat$site=="NFA" & master_dat$WY==2014,], aes(x=date, y=temp_7_max, group=WY),color="red")+
-  geom_line(data=master_dat[master_dat$site=="NFA" & master_dat$WY==2014,], aes(x=date, y=temp_7_avg, group=WY),color="black", lty=2)+
-  xlab("") + scale_color_viridis()
+  geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_7_min, group=WY), color="blue")+
+  geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_7_max, group=WY),color="red")+
+  geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_7_avg, group=WY),color="black", lty=2)+
+  xlab("")
 
 # DAILY PLOTS -------------------------------------------------------------
 
 # Stage: Daily Avg
 ggplot() + 
-  geom_line(data=master_dat, 
+  geom_line(data=master_dat1, 
             aes(x=date, y=lev_avg, color=site, group=WY)) +
   facet_grid(site~WY, scales = "free")
 
 # Stage: 7-Day Avg
 ggplot() + 
-  geom_line(data=master_dat, 
+  geom_line(data=master_dat1, 
             aes(x=date, y=lev_7_avg, color=site, group=WY)) +
   facet_grid(site~WY, scales = "free")
 
 # WTemp: Daily Avg
 ggplot() + 
-  geom_line(data=master_dat, 
+  geom_line(data=master_dat1, 
             aes(x=date, y=temp_avg, color=site, group=WY)) +
   facet_grid(site~WY, scales = "free")
 
 # WTemp: 7-Day Avg
 ggplot() + 
-  geom_line(data=master_dat, 
+  geom_line(data=master_dat1, 
             aes(x=date, y=temp_7_avg, color=site, group=WY)) +
   facet_grid(site~WY, scales = "free")
 
 # WTemp: 7-Day Avg w threshold
 ggplot() + 
-  geom_line(data=master_dat, 
+  geom_line(data=master_dat1, 
             aes(x=date, y=temp_7_avg, color=site, group=WY)) +
-  geom_ribbon(data=master_dat, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
+  geom_ribbon(data=master_dat1, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
   facet_grid(site~WY, scales="free")
 
+# REMOVE OLD DFs ----------------------------------------------------------
+
+rm(dy.sol.df, hr.df2, cdec_ppt_air)
 
 # ADD WATER YEAR INFO -----------------------------------------------------
 
 # add WY Index
-wys<-read_csv(file = "data/cdec_wy_index.csv") %>% filter(Basin=="SAC") %>% as.data.frame()
+wys<-read_csv(file = "data/cdec_wy_index.csv") %>% 
+  filter(Basin=="SAC", WY>2010) %>% select(WY, `Apr-Jul`, WYsum, Index) %>% 
+  rename(apr_jul = `Apr-Jul`) %>% as.data.frame
 
 # JOIN FROG DAT WITH HYDRO DAT --------------------------------------------
 
 frogBreed <- read_csv("data/oviposition_start_mainstem_sites.csv") %>% 
   mutate(estim_strt=mdy(estim_strt),
          obs_strt=mdy(obs_strt)) %>%
-  select(Site:WYT, REG:totalEM)
+  rename(WY = Year, site=Site) %>% 
+  select(site, WY, REG:totalEM)
 
-
-data1 <- left_join(master_dat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
+# join with master dat
+master_dat2 <- left_join(master_dat1, frogBreed, by = c("date"="estim_strt", "site", "WY")) %>% 
   mutate(site = as.factor(site))
-data1 <- add_WYD(data1, "Date") %>% select(-WYT) %>% 
-  mutate(DOY = as.integer(DOY),
-         WY = as.integer(WY),
-         DOWY = as.integer(DOWY))
-
-# join the data together:
-data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
-  mutate(site = as.factor(site))
-data1 <- add_WYD(data1, "Date") %>% select(-WYT) %>% 
-  mutate(DOY = as.integer(DOY),
-         WY = as.integer(WY),
-         DOWY = as.integer(DOWY))
 
 # join with WY index data
-data1 <- inner_join(data1, wys[,c(1,4:5)], by="WY")
+master_df <- inner_join(master_dat2, wys, by="WY")
 
-names(data1)
+master_df <- master_df %>% filter(site!="MFY", site!="MFA")
 
-# select only data between May-Jun 
-nfdf <- data1 %>% #filter(site %in% sites) %>% 
-  filter(DOY>120, DOY<182) %>% 
-  select(Date, site, obs_strt, totalEM, DOY:DOWY, air.7:level.7dL, WYsum, Index, -ppt2_in, -days_wo_ppt2)
+# quick plot:
+# WTemp: 7-Day Avg w threshold
+ggplot() + 
+  geom_line(data=master_df, 
+            aes(x=date, y=temp_7_avg, color=site, group=WY)) +
+  geom_ribbon(data=master_df, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
+  geom_point(data=master_df[!is.na(master_df$totalEM),], aes(x=date, y=temp_7_avg, fill=site), 
+             pch=21,color="gray20",size=4) + 
+  facet_grid(site~WY, scales="free")
 
-summary(nfdf)
 
-# remove NAs:
-nfdf2 <- nfdf %>% 
-  filter(!is.na(air.7), 
-         !is.na(level.avg))
-summary(nfdf2)
+ggplot() + 
+  geom_line(data=master_df, 
+            aes(x=date, y=lev_7_avg, color=site, group=WY)) +
+  #geom_ribbon(data=master_df, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
+  geom_point(data=master_df[!is.na(master_df$totalEM),], aes(x=date, y=lev_7_avg, fill=site), 
+             pch=21,color="gray20",size=4) + 
+  facet_grid(site~WY, scales="free")
 
-# add binary 1 or 0 for breeding
-nfdf2 <- nfdf2 %>% mutate(ovipos=as.integer(ifelse(is.na(totalEM), 0, 1)))
-names(nfdf2)
 
-# get data
-d1 <- nfdf2 %>% dplyr::select(ovipos, site, WYsum, Index, DOWY, air.7:level.7dL) %>% 
-  filter(!is.na(ppt_in))
-summary(d1)
 
-# refactor the sites to drop unused factors
-d1$site <- factor(d1$site)
+# clean workspace
+rm(master_dat1, master_dat2, frogBreed, wys, cdec)
 
-# drop factors
-d2 <- dplyr::select(d1, -site) %>% setNames(., gsub("\\.", "_", colnames(.))) %>% as.data.frame
-names(d2)
+
+# SAVE --------------------------------------------------------------------
+
+save(master_df, file = "data/master_dat_2011-2016.rda")
+
+
