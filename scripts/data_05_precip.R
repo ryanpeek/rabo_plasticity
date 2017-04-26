@@ -10,6 +10,25 @@ library(purrr)  # for map(), reduce()
 source("scripts/functions/f_getCDEC.R")
 source("scripts/functions/f_doy.R")
 
+# Single one liner to calc consec days without ppt
+#days_no_ppt <- (!cdec$CDEC_ppt_mm) * unlist(lapply(rle(cdec$CDEC_ppt_mm)$lengths, seq_len))
+
+cumul_zeros <- function(x)  {
+  x <- !x
+  rl <- rle(x)
+  len <- rl$lengths
+  v <- rl$values
+  cumLen <- cumsum(len)
+  z <- x
+  # replace the 0 at the end of each zero-block in z by the 
+  # negative of the length of the preceding 1-block....
+  iDrops <- c(0, diff(v)) < 0
+  z[ cumLen[ iDrops ] ] <- -len[ c(iDrops[-1],FALSE) ]
+  # ... to ensure that the cumsum below does the right thing.
+  # We zap the cumsum with x so only the cumsums for the 1-blocks survive:
+  x*cumsum(z)
+}
+
 
 # GET NFY  ----------------------------------------------------------------
 
@@ -248,7 +267,6 @@ cdec_ppt_air <- bind_rows(cdec_ppt_air, RUB)
 
 
 save(cdec_ppt_air, file = "data/cdec_sites_daily_ppt_air_2010_2017.rda")
-
 
 
 # CDEC STATIONS -----------------------------------------------------
