@@ -61,12 +61,13 @@ dy.sol.df<-hr.df2 %>% mutate(date=floor_date(datetime, unit = "day")) %>%
 summary(dy.sol.df)
 
 
+
 # DAILY AVG WITH function FROM THE ADJ HOURLY DATA ------------------------
 
 source("scripts/functions/f_moving_average.R")
 
 # For SOLINST-RIVER: Make a Daily dataset
-dy.sol.df2<-hr.df2 %>% mutate(date=floor_date(datetime, unit = "day")) %>% 
+dy.sol.df<-hr.df2 %>% mutate(date=floor_date(datetime, unit = "day")) %>% 
   group_by(site, date)  %>% 
   dplyr::summarize("lev_avg"=mean(level_comp,na.rm=TRUE),
                    "lev_min"=min(level_comp,na.rm=TRUE),
@@ -92,24 +93,20 @@ dy.sol.df2<-hr.df2 %>% mutate(date=floor_date(datetime, unit = "day")) %>%
   mutate(date=ymd(date)) %>% 
   arrange(site, date) %>% as.data.frame()
 
-master_dat2 <- left_join(dy.sol.df, cdec_ppt_air[, c(1:4,8)], by = c("date", "site"))
-summary(master_dat2)
-summary(master_dat)
-
-# ADD THE CDEC DATA -------------------------------------------------------
+# ADJ THE CDEC DATA -------------------------------------------------------
 
 # this version doesn't fill gaps:
 #mutate("CDEC_air_7_avg"= stats::filter(CDEC_air_C, rep(1/7, 7), sides=1))
-#Cumulative zeros function
-f7 <- function(x){ tmp<-cumsum(x);tmp-cummax((!x)*tmp)} # RUN AS f7(!x) # doesn't work with NAs
 
+# Cumulative zeros function
+f7 <- function(x){ tmp<-cumsum(x);tmp-cummax((!x)*tmp)} # RUN AS f7(!x) # doesn't work with NAs
 
 cdec<- cdec_ppt_air %>%  select(station, site, date:CDEC_ppt_mm) %>%
   mutate(CDEC_air_C = round(CDEC_air_C, 2),
          CDEC_ppt_mm = ifelse(is.na(CDEC_ppt_mm), 0, CDEC_ppt_mm)) %>% 
   group_by(site) %>%
   mutate("CDEC_air_7_avg"= movingAverage(CDEC_air_C, n=7, centered=F),
-         "days_no_ppt" = f7(!CDEC_ppt_mm)) %>% 
+         "days_no_ppt" = f7(!CDEC_ppt_mm)) %>% # calc days without rain
   arrange(site,date) %>% as.data.frame() 
 
 #cdec$days_no_ppt=(!cdec$CDEC_ppt_mm) * unlist(lapply(rle(cdec$CDEC_ppt_mm)$lengths, seq_len))
@@ -121,65 +118,56 @@ ggplot() + geom_line(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x
 #  geom_bar(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=days_no_ppt/10), stat="identity", alpha=0.5) + 
 geom_bar(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=CDEC_ppt_mm/10), stat="identity", alpha=0.5, fill="blue") 
 
-master_dat <- left_join(dy.sol.df, cdec_ppt_air[, c(1:4,8)], by = c("date", "site"))
+# MAKE MASTER DAT ---------------------------------------------------------
+
+master_dat <- left_join(dy.sol.df, cdec, by = c("date", "site"))
 summary(master_dat)
 
 # FILTER TO SPRING MONTHS -------------------------------------------------
-selected_mons <- c(5,6,7)
+
+selected_mons <- c(4,5,6,7)
 master_dat <- master_dat %>% filter(month(date) %in% selected_mons)
+
 library(viridis)
 
 ggplot() + 
   geom_line(data=master_dat[master_dat$site=="NFA" & master_dat$WY==2014,], aes(x=date, y=temp_7_min, group=WY), color="blue")+
   geom_line(data=master_dat[master_dat$site=="NFA" & master_dat$WY==2014,], aes(x=date, y=temp_7_max, group=WY),color="red")+
   geom_line(data=master_dat[master_dat$site=="NFA" & master_dat$WY==2014,], aes(x=date, y=temp_7_avg, group=WY),color="black", lty=2)+
-  geom_line(data=master_dat[master_dat2$site=="NFA" & master_dat2$WY==2014,], aes(x=date, y=temp_7_max, group=WY),color="purple")+
   xlab("") + scale_color_viridis()
 
-# ADD 7-Day to CDEC -------------------------------------------------------
-
-# Add 7-day averages:
-master_df <- master_dat %>%
-  group_by(site, date) %>%
-  mutate("ppt_7_avg_mm"= roll_meanr(CDEC_ppt_mm, n=7, fill=NA, na.rm = TRUE),
-         "CDEC_air_7_avg"= roll_meanr(CDEC_air_C, n=7, fill=NA),
-         "CDEC_air_7_min"= roll_minr(CDEC_air_C, n=7, fill=NA),
-         "CDEC_air_7_max"= roll_maxr(CDEC_air_C, n=7, fill=NA)) %>%
-  arrange(site, date) %>% as.data.frame()
-summary(master_df)
-
-
-# DAILY -------------------------------------------------------------------
+# DAILY PLOTS -------------------------------------------------------------
 
 # Stage: Daily Avg
 ggplot() + 
-  geom_line(data=dy.sol.df, 
+  geom_line(data=master_dat, 
             aes(x=date, y=lev_avg, color=site, group=WY)) +
-  facet_grid(site~., scales = "free_y")
+  facet_grid(site~WY, scales = "free")
 
 # Stage: 7-Day Avg
 ggplot() + 
-  geom_line(data=dy.sol.df, 
+  geom_line(data=master_dat, 
             aes(x=date, y=lev_7_avg, color=site, group=WY)) +
-  facet_grid(site~., scales = "free_y")
+  facet_grid(site~WY, scales = "free")
 
 # WTemp: Daily Avg
 ggplot() + 
-  geom_line(data=dy.sol.df, 
+  geom_line(data=master_dat, 
             aes(x=date, y=temp_avg, color=site, group=WY)) +
-  facet_grid(site~., scales = "free_y")
+  facet_grid(site~WY, scales = "free")
 
 # WTemp: 7-Day Avg
 ggplot() + 
-  geom_line(data=dy.sol.df[dy.sol.df$WY==2011,], 
+  geom_line(data=master_dat, 
             aes(x=date, y=temp_7_avg, color=site, group=WY)) +
-  geom_ribbon(data=dy.sol.df[dy.sol.df$WY==2011,], aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
-  facet_grid(site~.)
+  facet_grid(site~WY, scales = "free")
 
-# plot a single SITE
+# WTemp: 7-Day Avg w threshold
 ggplot() + 
-  geom_path(data=dy.sol.df[dy.sol.df$site=="NFA",], aes(x=date, y=lev_7_avg, group=WY), color="maroon")
-
+  geom_line(data=master_dat, 
+            aes(x=date, y=temp_7_avg, color=site, group=WY)) +
+  geom_ribbon(data=master_dat, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
+  facet_grid(site~WY, scales="free")
 
 
 # ADD WATER YEAR INFO -----------------------------------------------------
@@ -195,7 +183,7 @@ frogBreed <- read_csv("data/oviposition_start_mainstem_sites.csv") %>%
   select(Site:WYT, REG:totalEM)
 
 
-data1 <- left_join(hydroDat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
+data1 <- left_join(master_dat, frogBreed, by = c("Date"="estim_strt", "site"="Site")) %>% 
   mutate(site = as.factor(site))
 data1 <- add_WYD(data1, "Date") %>% select(-WYT) %>% 
   mutate(DOY = as.integer(DOY),
