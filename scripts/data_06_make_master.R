@@ -83,9 +83,13 @@ dy.sol.df<-hr.df2 %>% mutate(date=floor_date(datetime, unit = "day")) %>%
   mutate("lev_7_avg"=movingAverage(lev_avg, n = 7, centered = F),
          "lev_7_min"= movingAverage(lev_min, n=7, centered=F),
          "lev_7_max"= movingAverage(lev_max, n=7, centered=F),
+         "lev_30_avg"= movingAverage(lev_avg, n=30, centered=F),
          "temp_7_avg"= movingAverage(temp_avg, n=7, centered=F),
          "temp_7_min"= movingAverage(temp_min, n=7, centered=F),
          "temp_7_max"= movingAverage(temp_max, n=7, centered=F),
+         "temp_30_avg"= movingAverage(temp_avg, n=30, centered=F),
+         "temp_30_min"= movingAverage(temp_min, n=30, centered=F),
+         "temp_30_max"= movingAverage(temp_max, n=30, centered=F),
          "W_air_7_avg"=movingAverage(W_air_avg, n=7, centered=F),
          "W_air_7_min"=movingAverage(W_air_min, n=7, centered=F),
          "W_air_7_max"=movingAverage(W_air_max, n=7, centered=F)) %>% 
@@ -106,17 +110,22 @@ cdec<- cdec_ppt_air %>%  select(station, site, date:CDEC_ppt_mm) %>%
          CDEC_ppt_mm = ifelse(is.na(CDEC_ppt_mm), 0, CDEC_ppt_mm)) %>% 
   group_by(site) %>%
   mutate("CDEC_air_7_avg"= movingAverage(CDEC_air_C, n=7, centered=F),
+         "CDEC_air_30_avg"= movingAverage(CDEC_air_C, n=30, centered=F),
          "days_no_ppt" = f7(!CDEC_ppt_mm)) %>% # calc days without rain
   arrange(site,date) %>% as.data.frame() 
 
-#cdec$days_no_ppt=(!cdec$CDEC_ppt_mm) * unlist(lapply(rle(cdec$CDEC_ppt_mm)$lengths, seq_len))
 summary(cdec)
   
 # quick plot
-ggplot() + geom_line(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=CDEC_air_7_avg), col="black")+
-  geom_line(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=CDEC_air_C), col="maroon", lty=2)+ xlab("") +   
-#  geom_bar(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=days_no_ppt/10), stat="identity", alpha=0.5) + 
-geom_bar(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], aes(x=date, y=CDEC_ppt_mm/10), stat="identity", alpha=0.5, fill="blue") 
+ggplot() + 
+  geom_line(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], 
+            aes(x=date, y=CDEC_air_7_avg), col="black")+
+  geom_line(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], 
+            aes(x=date, y=CDEC_air_30_avg), col="maroon", lty=4, lwd=1.2,
+            alpha=0.8)+ xlab("") +  
+  geom_bar(data=cdec[cdec$site=="NFA" & year(cdec$date)==2014,], 
+                       aes(x=date, y=CDEC_ppt_mm/10), stat="identity", 
+                       alpha=0.5, fill="blue") 
 
 # MAKE MASTER DAT ---------------------------------------------------------
 
@@ -130,10 +139,16 @@ master_dat1 <- master_dat1 %>% filter(month(date) %in% selected_mons)
 
 library(viridis)
 
+# 7 Day Water Temps NFA
 ggplot() + 
   geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_7_min, group=WY), color="blue")+
   geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_7_max, group=WY),color="red")+
   geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_7_avg, group=WY),color="black", lty=2)+
+  xlab("") + 
+  geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_30_avg, group=WY),color="forestgreen", lty=1, alpha=0.9)+
+  xlab("") + geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_30_max, group=WY),color="green2", lty=1, alpha=0.9)+
+  xlab("") +
+  geom_line(data=master_dat1[master_dat1$site=="NFA" & master_dat1$WY==2014,], aes(x=date, y=temp_30_min, group=WY),color="lightgreen", lty=1, alpha=0.9)+
   xlab("")
 
 # DAILY PLOTS -------------------------------------------------------------
@@ -225,5 +240,4 @@ rm(master_dat1, master_dat2, frogBreed, wys, cdec)
 # SAVE --------------------------------------------------------------------
 
 save(master_df, file = "data/master_dat_2011-2016.rda")
-
 
