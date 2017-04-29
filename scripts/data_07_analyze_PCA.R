@@ -52,7 +52,7 @@ ggplot() +
 # Stage vs. Temp: 7-day avg
 ggplot() + 
   geom_point(data=master_df[!is.na(master_df$totalEM),],
-            aes(x=temp_7_avg, y=lev_7_avg, shape=site),
+            aes(x=temp_avg, y=lev_avg, shape=site),
             size=4.1)  +
   geom_point(data=master_df[!is.na(master_df$totalEM),], 
              aes(x=temp_7_avg, y=lev_7_avg, shape=site, color=as.factor(WY)),
@@ -64,8 +64,12 @@ ggplot() +
 # PCA ---------------------------------------------------------------------
 
 # get only the breeding points
-master_breed <- filter(master_df, !is.na(master_df$totalEM)) %>% 
-  select(-site, -DOY, -DOWY, -date, -station, -missData, -REG, -obs_strt, -CDEC_air_C, -CDEC_air_7_avg, -totalEM) %>% as.data.frame
+master_breed <- filter(master_df, !is.na(master_df$totalEM), !is.na(master_df$CDEC_air_30_avg)) %>% 
+  select(-site, -WY, -WYsum, -DOY, -DOWY, -date, -station, -missData, -REG, -obs_strt, -CDEC_air_C, -CDEC_air_7_avg, -totalEM) %>% as.data.frame
+
+# remove as much datetime information (DOWY, days without ppt, etc)
+master_breed <- master_breed %>% select(-W_humidity_avg, -days_no_ppt)
+
 
 # PCA
 prin_comp <- prcomp(master_breed)
@@ -96,6 +100,7 @@ prin_comp$rotation[,1:3] %>% as.data.frame %>%
 # plot
 biplot(prin_comp, choices = 1:2, scale = 0, pc.biplot = F, 
        xlabs=rep(".", nrow(master_breed)), col="blue")
+
 biplot(prin_comp, choices = 2:3, scale = 0, pc.biplot = F, xlabs=rep(".", nrow(master_breed)), 
        col="black")
 
@@ -122,6 +127,8 @@ pcaCharts(prin_comp)
 
 # PLOTTING PCA ------------------------------------------------------------
 
+devtools::install_github("vqv/ggbiplot")
+
 library(ggbiplot)
 
 g <- ggbiplot(prin_comp, obs.scale = 1, var.scale = 1,
@@ -131,9 +138,6 @@ g <- g + scale_color_discrete(name = '')
 g <- g + theme(legend.direction = 'horizontal', 
                legend.position = 'top')
 print(g)
-
-
-pcaCharts(prin_comp)
 
 # now switch off scaling factors (var.scale)
 g <- ggbiplot(prin_comp, choices = 1:2, scale = 0, var.scale = 0, labels= prin_comp$site, groups = prin_comp$site,
