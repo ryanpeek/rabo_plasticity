@@ -94,9 +94,15 @@ ggplot() + geom_line(data=plotNFA, aes(x=Period, y=Power.avg))+geom_point(data=p
 df.nfa <- nfa %>%  
   rename(Date=date, Q=flow_cfs)
 
+df.nfa <- NFA_dv %>%  
+  rename(Date=date, Q=flow_cfs)
+
 # analyze
 Col.nfa<-hydrostats::Colwells(df.nfa)
 (seasonality <- tibble(site=c("NFA"), MP_metric=c(Col.nfa$MP)))
+
+# save models
+save(nfa.w, NFA_dv, plotNFA,  file = "models/nfa_usgs_wavelet.rda", compress = "xz")
 
 # MFY ---------------------------------------------------------------
 # avg daily flow = (41)
@@ -147,6 +153,57 @@ df.mfy <- mfy %>%
 Col.mfy<-hydrostats::Colwells(df.mfy)
 (seasonality <- tibble(site=c("mfy"), MP_metric=c(Col.mfy$MP)))
 
+
+# MFA ---------------------------------------------------------------------
+
+# avg daily flow = (41)
+# event flow = (20)
+# avg daily Air = (30), daily ppt incr = (45)
+
+# Oxbow/Ralston (OXB) (12/1/1997 to present)
+
+# flow daily
+get.CDEC(station = "OXB", duration = "E",sensor = 20, start = "1997-12-01",end = "2017-04-27",csv = F)
+
+mfy <- OXB %>% select(station, datetime, sensor_20) %>% 
+  rename(flow_cfs = sensor_20, date=datetime) %>% 
+  mutate(date=as.Date(date)) %>% 
+  filter(!is.na(flow_cfs), flow_cfs>0) %>% 
+  add_WYD(., "date") 
+
+rm(OXB)
+
+summary(mfy)
+
+# quick plot
+ggplot() + geom_line(data=mfy, aes(x=DOWY, y=flow_cfs, color=as.factor(WY)), show.legend = F) + scale_y_continuous(limits = c(0,8000))
+
+# quick wavelet analysis:
+
+mfy.w <- analyze.wavelet(mfy, my.series = 3, dt = 1/30)
+
+wt.image(mfy.w, main = "MFY Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(mfy.w)
+
+plotMFY<-mfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotMFY, aes(x=Period, y=Power.avg))+geom_point(data=plotmfy, aes(x=Period,y=Power.avg), col=ifelse(plotmfy$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+# quick colwell analysis of seasonality:
+## From Tonkin et al 2017: M (Contingency) as metric of seasonality
+## To standardize the role of seasonality in relation to overall predictability,
+## we divided (M) by overall predictability (the sum of (M) and constancy (C)
+
+# standardize
+df.mfy <- mfy %>%  
+  rename(Date=date, Q=flow_cfs)
+
+# analyze
+Col.mfy<-hydrostats::Colwells(df.mfy)
+(seasonality <- tibble(site=c("mfy"), MP_metric=c(Col.mfy$MP)))
 
 
 

@@ -25,12 +25,13 @@ library(viridis)
 
 # LOAD DATA ---------------------------------------------------------------
 
-load("data/master_dat_2011-2016.rda")
-
+load("data/master_dat_2011-2016.rda") # no MFY or MFA
+load("data/NFA_dv_USGS_1941_2017-04-28.rda")
+load("data/NFY_dv_USGS_1930_2017-04-28.rda")
 
 # PLOTS -------------------------------------------------------------------
 
-master_df <- master_df %>% filter(site!="MFY", site!="MFA")
+#master_df <- master_df %>% filter(site!="MFY", site!="MFA")
 
 # WTemp: 7-Day Avg w threshold
 ggplot() + 
@@ -59,6 +60,100 @@ ggplot() +
              size=4)  + 
   scale_color_viridis(discrete = T, option = "D")
   
+
+# COLWELL SEASONALITY INDEX -----------------------------------------------
+
+library(hydrostats) # for seasonality 
+## From Tonkin et al 2017: M (Contingency) as metric of seasonality
+## To standardize seasonality in relation to overall predictability:
+## divide (M) by overall predictability (the sum of (M) and constancy (C)
+
+# standardize each site
+nfa <- master_df %>% filter(site=="NFA")
+mfa <- master_df %>% filter(site=="MFA")
+rub <- master_df %>% filter(site=="RUB")
+nfy <- master_df %>% filter(site=="NFY")
+sfy <- master_df %>% filter(site=="SFY")
+
+# calc colwell function:
+get.colwell <- function(data, datecol, y, site){
+  data <- data
+  datecol <- datecol
+  y_col <- y
+  data <- data %>% filter(!is.na(y_col))
+  site <- site
+  df <- select(data, datecol, y_col) %>% set_names(c("Date", "Q"))
+  colwells <- Colwells(df)$MP
+  season <- tibble(site=c(site), MP_metric=c(colwells))
+  return(season)
+}
+
+# lev_avg
+nfa.c <- get.colwell(data = nfa, 2, 3, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 3, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 3, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 3, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 3, site = "SFY")
+
+(S_var1 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="lev_avg"))
+
+# temp_avg
+nfa.c <- get.colwell(data = nfa, 2, 6, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 6, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 6, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 6, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 6, site = "SFY")
+
+(S_var2 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="temp_avg") %>% bind_rows(S_var1))
+
+# CDEC_ppt_mm
+nfa.c <- get.colwell(data = nfa, 2, 32, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 32, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 32, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 32, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 32, site = "SFY")
+
+(S_var3 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_ppt_mm") %>% bind_rows(S_var2))
+
+# CDEC_air_7
+nfa.c <- get.colwell(data = nfa, 2, 33, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 33, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 33, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 33, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 33, site = "SFY")
+
+(S_var4 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_air_7") %>% bind_rows(S_var3))
+
+# CDEC_air_30
+nfa.c <- get.colwell(data = nfa, 2, 34, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 34, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 34, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 34, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 34, site = "SFY")
+
+(S_var5 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_air_30") %>% bind_rows(S_var4))
+
+# W_hmidity_avg
+nfa.c <- get.colwell(data = nfa, 2, 13, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 13, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 13, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 13, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 13, site = "SFY")
+
+(S_var6 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_humidity_avg") %>% bind_rows(S_var5))
+
+# flow_cfs
+nfa.c <- get.colwell(data = NFA_dv, 3, 4, site = "NFA")
+nfy.c <- get.colwell(data = NFY_dv, 3, 4, site = "NFY")
+
+final_bind <- bind_rows(S_var6, nfa.c, nfy.c)
+final_bind
+
+
+
+# WAVELET ANALYSIS --------------------------------------------------------
+
+library(WaveletComp) # for wavelet analysis
 
 
 # PCA ---------------------------------------------------------------------

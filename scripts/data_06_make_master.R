@@ -134,7 +134,7 @@ summary(master_dat1)
 
 # FILTER TO SPRING MONTHS -------------------------------------------------
 
-selected_mons <- c(4,5,6,7)
+# selected_mons <- c(4,5,6,7)
 master_dat1 <- master_dat1 %>% filter(month(date) %in% selected_mons)
 
 library(viridis)
@@ -210,7 +210,7 @@ master_dat2 <- left_join(master_dat1, frogBreed, by = c("date"="estim_strt", "si
 # join with WY index data
 master_df <- inner_join(master_dat2, wys, by="WY")
 
-master_df <- master_df %>% filter(site!="MFY", site!="MFA")
+#master_df <- master_df %>% filter(site!="MFY", site!="MFA")
 
 # quick plot:
 # WTemp: 7-Day Avg w threshold
