@@ -19,7 +19,9 @@ options(error=NULL) # reset beeps to nothing
 
 # LOAD LIBRARIES ----------------------------------------------------------
 
+library(beepr)
 library(tidyverse)
+library(lubridate)
 library(ggrepel)
 library(viridis)
 
@@ -28,6 +30,11 @@ library(viridis)
 load("data/master_dat_2011-2016.rda") # no MFY or MFA
 load("data/NFA_dv_USGS_1941_2017-04-28.rda")
 load("data/NFY_dv_USGS_1930_2017-04-28.rda")
+load("data/MFY_dv_CDEC_ORH_2000_2017.rda")
+load("data/MFA_dv_CDEC_OXB_1997-2017.rda") 
+load("data/RUB_dv_PCWA_2011-2014.rda")
+load("data/SFY_dv_CDEC_JBR_1998-2017.rda") # save data
+
 
 # PLOTS -------------------------------------------------------------------
 
@@ -133,7 +140,7 @@ sfy.c <- get.colwell(data = sfy, 2, 34, site = "SFY")
 
 (S_var5 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_air_30") %>% bind_rows(S_var4))
 
-# W_hmidity_avg
+# W_humidity_avg
 nfa.c <- get.colwell(data = nfa, 2, 13, site = "NFA")
 mfa.c <- get.colwell(data = mfa, 2, 13, site = "MFA")
 rub.c <- get.colwell(data = rub, 2, 13, site = "RUB")
@@ -142,19 +149,139 @@ sfy.c <- get.colwell(data = sfy, 2, 13, site = "SFY")
 
 (S_var6 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_humidity_avg") %>% bind_rows(S_var5))
 
+# FLOW
+
 # flow_cfs
 nfa.c <- get.colwell(data = NFA_dv, 3, 4, site = "NFA")
 nfy.c <- get.colwell(data = NFY_dv, 3, 4, site = "NFY")
+mfy.c <- get.colwell(data = mfy_dv, 2, 3, site = "MFY")
+mfa.c <- get.colwell(data = MFA_dv, 2, 3, site = "MFA")
+rub.c <- get.colwell(data = RUB_dv, 2, 3, site = "RUB")
+sfy.c <- get.colwell(data = SFY_dv, 2, 3, site = "SFY")
 
-final_bind <- bind_rows(S_var6, nfa.c, nfy.c)
+final_bind <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, mfy.c, sfy.c) %>% mutate("var" = "flow_cfs") %>% 
+  bind_rows(S_var6)
+
 final_bind
 
+ggplot() + 
+  geom_bar(data=final_bind, aes(x=site, y=MP_metric, fill=var), stat="identity", show.legend = F) + 
+  geom_hline(yintercept = 0.75, color="green", lty=2, alpha=0.9, lwd=0.9)+
+  facet_grid(var~.)
 
+save(final_bind, file = "models/colwell_variables.rda")
+load("models/colwell_variables.rda")
 
 # WAVELET ANALYSIS --------------------------------------------------------
 
 library(WaveletComp) # for wavelet analysis
 
+
+# RUB
+rub.w <- analyze.wavelet(RUB_dv, my.series = 3, dt = 1/30)
+
+wt.image(rub.w, main = "RUB Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(rub.w)
+
+plotRUB<-rub.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotRUB, aes(x=Period, y=Power.avg))+geom_point(data=plotRUB, aes(x=Period,y=Power.avg), col=ifelse(plotRUB$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+# MFA
+mfa.w <- analyze.wavelet(MFA_dv, my.series = 3, dt = 1/30)
+
+wt.image(mfa.w, main = "MFA Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(mfa.w)
+
+plotMFA<-mfa.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotMFA, aes(x=Period, y=Power.avg))+geom_point(data=plotMFA, aes(x=Period,y=Power.avg), col=ifelse(plotMFA$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+# NFA
+nfa.w <- analyze.wavelet(NFA_dv, my.series = 4, dt = 1/30) # usgs
+
+wt.image(nfa.w, main = "NFA Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(nfa.w)
+
+plotNFA<-nfa.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotNFA, aes(x=Period, y=Power.avg))+geom_point(data=plotNFA, aes(x=Period,y=Power.avg), col=ifelse(plotNFA$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+
+# NFY
+nfy.w <- analyze.wavelet(NFY_dv, my.series = 4, dt = 1/30) # usgs
+
+wt.image(nfy.w, main = "NFY Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(nfy.w)
+
+plotNFY<-nfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotNFY, aes(x=Period, y=Power.avg))+geom_point(data=plotNFY, aes(x=Period,y=Power.avg), col=ifelse(plotNFY$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+
+# SFY
+sfy.w <- analyze.wavelet(SFY_dv, my.series = 3, dt = 1/30) # usgs
+
+wt.image(sfy.w, main = "SFY Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(sfy.w)
+
+plotSFY<-sfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotSFY, aes(x=Period, y=Power.avg))+geom_point(data=plotSFY, aes(x=Period,y=Power.avg), col=ifelse(plotSFY$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+
+
+# MFY
+mfy.w <- analyze.wavelet(mfy_dv, my.series = 3, dt = 1/30)
+
+wt.image(mfy.w, main = "MFY Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(mfy.w)
+
+plotMFY<-mfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotMFY, aes(x=Period, y=Power.avg))+geom_point(data=plotMFY, aes(x=Period,y=Power.avg), col=ifelse(plotMFY$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+
+# COMBINE WAVELETS --------------------------------------------------------
+
+#save(plotNFA, plotRUB, plotMFA, plotNFY,  plotMFY, plotSFY,  file = "models/wavelet_plotpower.rda")
+
+load("models/wavelet_plotpower.rda")
+
+
+# all sites (except RUB)
+ggplot() + 
+  geom_line(data=plotNFA, aes(x=Period, y=Power.avg), col="black")+
+  geom_line(data=plotNFY, aes(x=Period, y=Power.avg), col="blue",lty=2) +
+  geom_line(data=plotMFA, aes(x=Period, y=Power.avg), col="red",lty=3, lwd=2) + 
+  geom_line(data=plotMFY, aes(x=Period, y=Power.avg), col="purple") + 
+  geom_line(data=plotSFY, aes(x=Period, y=Power.avg), col="orange") + 
+  geom_line(data=plotRUB, aes(x=Period, y=Power.avg), col="green") +
+  scale_x_continuous(breaks=c(seq(0,24,3)), limits = c(0,27))
+
+# all unreg sites
+ggplot() + 
+  geom_line(data=plotNFA, aes(x=Period, y=Power.avg), col="black")+
+  geom_line(data=plotNFY, aes(x=Period, y=Power.avg), col="blue",lty=2)+
+  scale_x_continuous(breaks=c(seq(0,300,24)))
 
 # PCA ---------------------------------------------------------------------
 
