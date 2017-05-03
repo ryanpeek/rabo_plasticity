@@ -27,7 +27,7 @@ library(viridis)
 
 # LOAD DATA ---------------------------------------------------------------
 
-load("data/master_dat_2011-2016.rda") # no MFY or MFA
+load("data/master_dat_2011-2016.rda") 
 load("data/NFA_dv_USGS_1941_2017-04-28.rda")
 load("data/NFY_dv_USGS_1930_2017-04-28.rda")
 load("data/MFY_dv_CDEC_ORH_2000_2017.rda")
@@ -38,34 +38,42 @@ load("data/SFY_dv_CDEC_JBR_1998-2017.rda") # save data
 
 # PLOTS -------------------------------------------------------------------
 
-#master_df <- master_df %>% filter(site!="MFY", site!="MFA")
+master_df <- master_df %>% filter(site!="MFY")
 
 # WTemp: 7-Day Avg w threshold
 ggplot() + 
   geom_line(data=master_df, 
-            aes(x=date, y=temp_7_avg, color=site, group=WY)) +
-  geom_ribbon(data=master_df, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) +
-  geom_point(data=master_df[!is.na(master_df$totalEM),], aes(x=date, y=temp_7_avg, fill=site), 
-             pch=21,color="gray20",size=4) + 
+            aes(x=date, y=temp_7_avg, color=site, group=WY), show.legend = F) +
+  geom_ribbon(data=master_df, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) + xlab("")+ ylab("7-day Avg Water Temp (C)")+
+  geom_point(data=master_df[!is.na(master_df$totalEM),], aes(x=date, y=temp_7_avg, fill=site), show.legend = F, pch=21,color="gray20",size=4) + 
   facet_grid(site~WY, scales="free_x")
+
+ggsave(filename = "figs/watertemp7_breeding.png", width = 9, height = 6, units = "in")
+
 
 # Stage: 7-day avg
 ggplot() + 
   geom_line(data=master_df, 
-            aes(x=date, y=lev_7_avg, color=site, group=WY)) +
-  geom_point(data=master_df[!is.na(master_df$totalEM),], aes(x=date, y=lev_7_avg, fill=site), 
+            aes(x=date, y=lev_7_avg, color=site, group=WY), show.legend = F) +
+  geom_point(data=master_df[!is.na(master_df$totalEM),], aes(x=date, y=lev_7_avg, fill=site), show.legend = F,
              pch=21,color="gray20",size=4) + 
+  xlab("")+ ylab("7-day Avg Stage (m)")+
   facet_grid(site~WY, scales="free")
+
+ggsave(filename = "figs/stage7_breeding.png", width = 9, height = 6, units = "in")
+
 
 # Stage vs. Temp: 7-day avg
 ggplot() + 
   geom_point(data=master_df[!is.na(master_df$totalEM),],
-            aes(x=temp_avg, y=lev_avg, shape=site),
+            aes(x=temp_7_avg, y=W_air_7_min, shape=site),
             size=4.1)  +
   geom_point(data=master_df[!is.na(master_df$totalEM),], 
-             aes(x=temp_7_avg, y=lev_7_avg, shape=site, color=as.factor(WY)),
+             aes(x=temp_7_avg, y=W_air_7_min, shape=site, color=as.factor(WY)),
              size=4)  + 
   scale_color_viridis(discrete = T, option = "D")
+
+ggsave(filename = "figs/air7_temp7_breeding.png", width = 9, height = 6, units = "in")
   
 
 # COLWELL SEASONALITY INDEX -----------------------------------------------
@@ -170,7 +178,6 @@ ggplot() +
   facet_grid(var~.)
 
 save(final_bind, file = "models/colwell_variables.rda")
-load("models/colwell_variables.rda")
 
 # WAVELET ANALYSIS --------------------------------------------------------
 
@@ -180,9 +187,11 @@ library(WaveletComp) # for wavelet analysis
 # RUB
 rub.w <- analyze.wavelet(RUB_dv, my.series = 3, dt = 1/30)
 
+pdf(file = "./figs/wavelet_RUB_dailyflow.pdf", width = 9, height = 6.6)
 wt.image(rub.w, main = "RUB Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
+dev.off()
 
 wt.avg(rub.w)
 
@@ -193,9 +202,12 @@ ggplot() + geom_line(data=plotRUB, aes(x=Period, y=Power.avg))+geom_point(data=p
 # MFA
 mfa.w <- analyze.wavelet(MFA_dv, my.series = 3, dt = 1/30)
 
+pdf(file = "./figs/wavelet_MFA_dailyflow.pdf", width = 9, height = 6.6)
 wt.image(mfa.w, main = "MFA Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
+dev.off()
+
 
 wt.avg(mfa.w)
 
@@ -206,9 +218,11 @@ ggplot() + geom_line(data=plotMFA, aes(x=Period, y=Power.avg))+geom_point(data=p
 # NFA
 nfa.w <- analyze.wavelet(NFA_dv, my.series = 4, dt = 1/30) # usgs
 
+pdf(file = "./figs/wavelet_NFA_dailyflow.pdf", width = 9, height = 6.6)
 wt.image(nfa.w, main = "NFA Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
+dev.off()
 
 wt.avg(nfa.w)
 
@@ -220,9 +234,11 @@ ggplot() + geom_line(data=plotNFA, aes(x=Period, y=Power.avg))+geom_point(data=p
 # NFY
 nfy.w <- analyze.wavelet(NFY_dv, my.series = 4, dt = 1/30) # usgs
 
+pdf(file = "./figs/wavelet_NFY_dailyflow.pdf", width = 9, height = 6.6)
 wt.image(nfy.w, main = "NFY Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
+dev.off()
 
 wt.avg(nfy.w)
 
@@ -234,9 +250,11 @@ ggplot() + geom_line(data=plotNFY, aes(x=Period, y=Power.avg))+geom_point(data=p
 # SFY
 sfy.w <- analyze.wavelet(SFY_dv, my.series = 3, dt = 1/30) # usgs
 
+pdf(file = "./figs/wavelet_SFY_dailyflow.pdf", width = 9, height = 6.6)
 wt.image(sfy.w, main = "SFY Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
+dev.off()
 
 wt.avg(sfy.w)
 
@@ -249,15 +267,36 @@ ggplot() + geom_line(data=plotSFY, aes(x=Period, y=Power.avg))+geom_point(data=p
 # MFY
 mfy.w <- analyze.wavelet(mfy_dv, my.series = 3, dt = 1/30)
 
+pdf(file = "./figs/wavelet_MFY_dailyflow.pdf", width = 9, height = 6.6)
 wt.image(mfy.w, main = "MFY Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
+dev.off()
+
 
 wt.avg(mfy.w)
 
 plotMFY<-mfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
 
 ggplot() + geom_line(data=plotMFY, aes(x=Period, y=Power.avg))+geom_point(data=plotMFY, aes(x=Period,y=Power.avg), col=ifelse(plotMFY$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+
+
+# COMBINED COLWELL --------------------------------------------------------
+
+load("models/colwell_variables.rda")
+colwell_dat <- final_bind %>% filter(!site=="MFY", !site=="SFY")
+
+colwell_dat$site <- factor(colwell_dat$site, levels = c("NFA", "NFY","RUB","MFA"))
+levels(colwell_dat$site)
+
+ggplot() + 
+  geom_col(data=colwell_dat, aes(x=var, y=MP_metric, fill=site, group=site), 
+           show.legend = F, position="dodge") + coord_flip()+ 
+  scale_fill_viridis(discrete = T,option = "D") + geom_hline(yintercept = 0.7, color="maroon", lty=2, lwd=0.9, alpha=0.9)+ ylab("Colwell's Seasonality (MP)") + xlab("") + labs(title="Seasonality Metrics in 4 Sierran Rivers") +
+  facet_grid(.~site)
+ggsave("./figs/colwell_metrics_4rivs_barplot.png", width = 7, height=4, units = "in")
+
 
 
 # COMBINE WAVELETS --------------------------------------------------------
@@ -271,11 +310,18 @@ load("models/wavelet_plotpower.rda")
 ggplot() + 
   geom_line(data=plotNFA, aes(x=Period, y=Power.avg), col="black")+
   geom_line(data=plotNFY, aes(x=Period, y=Power.avg), col="blue",lty=2) +
-  geom_line(data=plotMFA, aes(x=Period, y=Power.avg), col="red",lty=3, lwd=2) + 
-  geom_line(data=plotMFY, aes(x=Period, y=Power.avg), col="purple") + 
-  geom_line(data=plotSFY, aes(x=Period, y=Power.avg), col="orange") + 
-  geom_line(data=plotRUB, aes(x=Period, y=Power.avg), col="green") +
-  scale_x_continuous(breaks=c(seq(0,24,3)), limits = c(0,27))
+  geom_line(data=plotMFA, aes(x=Period, y=Power.avg), col="red",lty=4, lwd=1) + 
+  #geom_line(data=plotMFY, aes(x=Period, y=Power.avg), col="purple") + 
+  #geom_line(data=plotSFY, aes(x=Period, y=Power.avg), col="orange") + 
+  geom_line(data=plotRUB, aes(x=Period, y=Power.avg), col="purple") +
+  scale_x_continuous(breaks=c(seq(0,24,3)), limits = c(0,27)) +
+  annotate("text", label="NFA", color="black", x=15, y=8)+
+  annotate("text", label="NFY", color="blue", x=15, y=10)+
+  annotate("text", label="Rubicon", color="purple", x=4, y=8.5)+
+  annotate("text", label="MFA", color="red", x=11.8, y=3)
+ggsave("./figs/wavelet_powerplot_4rivs.png", width = 9, height=6, units = "in")
+
+
 
 # all unreg sites
 ggplot() + 
@@ -290,8 +336,11 @@ master_breed <- filter(master_df, !is.na(master_df$totalEM), !is.na(master_df$CD
   select(-site, -WY, -WYsum, -DOY, -DOWY, -date, -station, -missData, -REG, -obs_strt, -CDEC_air_C, -CDEC_air_7_avg, -totalEM) %>% as.data.frame
 
 # remove as much datetime information (DOWY, days without ppt, etc)
-master_breed <- master_breed %>% select(-W_humidity_avg, -days_no_ppt)
+master_breed <- master_breed %>% select(-W_humidity_avg)
 
+
+# REMOVE ALL BUT A FEW TO SEE WHAT HAPPENS:
+#master_breed <- master_breed %>% select(lev_avg, temp_avg, W_air_min, temp_7_avg, W_air_7_avg, CDEC_air_30_avg, CDEC_ppt_mm, Index)
 
 # PCA
 prin_comp <- prcomp(master_breed)
@@ -349,7 +398,7 @@ pcaCharts(prin_comp)
 
 # PLOTTING PCA ------------------------------------------------------------
 
-devtools::install_github("vqv/ggbiplot")
+#devtools::install_github("vqv/ggbiplot")
 
 library(ggbiplot)
 
@@ -361,6 +410,9 @@ g <- g + theme(legend.direction = 'horizontal',
                legend.position = 'top')
 print(g)
 
+ggsave("figs/biplot_pca_v2.png", width = 7, height = 6, units="in")
+
+
 # now switch off scaling factors (var.scale)
 g <- ggbiplot(prin_comp, choices = 1:2, scale = 0, var.scale = 0, labels= prin_comp$site, groups = prin_comp$site,
               ellipse = TRUE, 
@@ -369,5 +421,5 @@ g <- g + scale_color_discrete(name = '')
 g <- g + theme(legend.direction = 'horizontal', 
                legend.position = 'top')
 print(g)
-
+ggsave("figs/biplot_pca_noscale_v2.png", width = 7, height = 6, units="in")
 

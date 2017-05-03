@@ -7,7 +7,7 @@ library(lubridate)
 library(purrr)  # for map(), reduce()
 library(WaveletComp) # for wavelet analysis
 library(hydrostats) # for seasonality colwell analysis
-
+library(viridis)
 
 # Load functions ----------------------------------------------------------
 
@@ -70,6 +70,17 @@ summary(NFA_dv)
 
 # quick plots
 ggplot() + geom_line(data=nfa, aes(x=DOWY, y=flow_cfs, color=as.factor(WY)), show.legend = F)
+
+# load IV data
+nfa_iv<-read_rds(path = "data/NFA_iv_USGS_updated_2017-02-22.rds")
+nfa_iv <- add_WYD(nfa_iv, datecolumn = "datetime")
+
+# plot
+ggplot() + geom_line(data=nfa_iv, aes(x=datetime, y=flow_cfs), show.legend = F, color="darkblue") + ylab("log[Discharge] (cms)") +xlab("")+ scale_y_log10()+
+  facet_zoom(x = WY == 2012, shrink=T)# + ylim(c(0,500))
+
+ggsave(filename = "figs/NFA_log_flow_facet_zoom.png",width = 9, height = 7, units = "in")
+
 
 # quick wavelet analysis:
 
@@ -154,6 +165,55 @@ mfy.c <- mfy_dv %>%
 Col.mfy<-hydrostats::Colwells(df.mfy)
 (seasonality <- tibble(site=c("mfy"), MP_metric=c(Col.mfy$MP)))
 
+
+# MFY_15min DATA ----------------------------------------------------------
+
+mfy.lev <- read_csv("data/MY15min_data_csv.zip") %>% as.data.frame()
+summary(mfy.lev)
+
+mfy.lev <- mfy.lev %>% 
+  replace_na(list(MYR_BLW_OHD_YC5_cfs=0, LOHMANRIDGE_YC4_cfs=0)) %>% 
+  mutate(datetime=dmy_hm(Datetime),
+         flow_cfs=LOHMANRIDGE_YC4_cfs + MYR_BLW_OHD_YC5_cfs) %>% 
+  select(datetime, flow_cfs) %>% as.data.frame()
+
+summary(mfy.lev)
+
+## now make hourly to match timelapse photos
+mfy.hv<-mfy.lev %>% 
+  mutate(datetime = floor_date(datetime, unit = "hours")) %>% 
+  group_by(datetime) %>% 
+  summarize(
+    "flow_cfs"=mean(flow_cfs,na.rm=TRUE),
+    "flow_cms"=flow_cfs*0.028316847) %>% 
+  add_WYD(., "datetime")
+
+summary(mfy.hv)
+
+
+mfy.dv<-mfy.lev %>% 
+  mutate(date = floor_date(datetime, unit = "days")) %>% 
+  group_by(date) %>% 
+  summarize(
+    "flow_cfs"=mean(flow_cfs,na.rm=TRUE),
+    "flow_cms"=flow_cfs*0.028316847) %>% 
+  add_WYD(., "date") %>% 
+  select(date, flow_cfs, flow_cms, DOY, DOWY, WY)
+
+summary(mfy.dv)
+ggplot() + geom_line(data=mfy.dv, aes(x=date, y=flow_cfs, color=as.factor(WY)), show.legend = F) + scale_y_continuous(limits = c(0,8000))
+
+mfy.w <- analyze.wavelet(mfy.dv, my.series = 3, dt = 1/30)
+
+wt.image(mfy.w, main = "MFY Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(mfy.w)
+
+plotMFY<-mfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotMFY, aes(x=Period, y=Power.avg))+geom_point(data=plotMFY, aes(x=Period,y=Power.avg), col=ifelse(plotMFY$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
 
 
 # SFY ---------------------------------------------------------------
@@ -266,10 +326,17 @@ save(MFA_dv, file = "data/MFA_dv_CDEC_OXB_1997-2017.rda") # save data
 
 
 # quick plot HV
-ggplot() + geom_line(data=MFA_hv, aes(x=datetime, y=flow_cfs, color=as.factor(WY)), show.legend = F)
+ggplot() + geom_line(data=MFA_hv, aes(x=datetime, y=flow_cfs, color=WY), show.legend = F) + scale_color_viridis()
+
+# ZOOM IN HERE ggforce: (cms= cfs*0.028316847)
+library(ggforce)
+ggplot() + geom_line(data=MFA_hv, aes(x=datetime, y=flow_cfs), show.legend = F, color="darkblue") + ylab("log[Discharge] (cms)") +xlab("")+ scale_y_log10()+
+  facet_zoom(x = WY == 2012, shrink=T)# + ylim(c(0,500))
+ggsave(filename = "figs/MFA_log_flow_facet_zoom.png",width = 9, height = 7, units = "in")
 
 # quick plot DV
 ggplot() + geom_line(data=MFA_dv, aes(x=date, y=flow_avg_cfs, color=as.factor(WY)), show.legend = F)
+
 # quick plot CV
 ggplot() + geom_line(data=MFA_dv, aes(x=date, y=flow_CV, color=as.factor(WY)), show.legend = F)
 
