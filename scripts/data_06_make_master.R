@@ -231,8 +231,6 @@ ggplot() +
              pch=21,color="gray20",size=4) + 
   facet_grid(site~WY, scales="free")
 
-
-
 # clean workspace
 rm(master_dat1, master_dat2, frogBreed, wys, cdec)
 

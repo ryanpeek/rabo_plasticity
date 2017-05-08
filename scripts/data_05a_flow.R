@@ -8,6 +8,7 @@ library(purrr)  # for map(), reduce()
 library(WaveletComp) # for wavelet analysis
 library(hydrostats) # for seasonality colwell analysis
 library(viridis)
+library(ggforce)
 
 # Load functions ----------------------------------------------------------
 
@@ -171,16 +172,17 @@ Col.mfy<-hydrostats::Colwells(df.mfy)
 mfy.lev <- read_csv("data/MY15min_data_csv.zip") %>% as.data.frame()
 summary(mfy.lev)
 
-mfy.lev <- mfy.lev %>% 
+mfy_iv <- mfy.lev %>% 
   replace_na(list(MYR_BLW_OHD_YC5_cfs=0, LOHMANRIDGE_YC4_cfs=0)) %>% 
   mutate(datetime=dmy_hm(Datetime),
          flow_cfs=LOHMANRIDGE_YC4_cfs + MYR_BLW_OHD_YC5_cfs) %>% 
   select(datetime, flow_cfs) %>% as.data.frame()
 
-summary(mfy.lev)
+save(mfy_iv, file = "data/MFY_iv_ORH_YC5_2003_2016.rda")
+summary(mfy_iv)
 
-## now make hourly to match timelapse photos
-mfy.hv<-mfy.lev %>% 
+## now make hourly to match
+mfy_hv<-mfy.lev %>% 
   mutate(datetime = floor_date(datetime, unit = "hours")) %>% 
   group_by(datetime) %>% 
   summarize(
@@ -188,10 +190,10 @@ mfy.hv<-mfy.lev %>%
     "flow_cms"=flow_cfs*0.028316847) %>% 
   add_WYD(., "datetime")
 
-summary(mfy.hv)
+summary(mfy_hv)
+save(mfy_hv, file = "data/MFY_hv_ORH_YC5_2003_2016.rda")
 
-
-mfy.dv<-mfy.lev %>% 
+mfy_dv<-mfy.lev %>% 
   mutate(date = floor_date(datetime, unit = "days")) %>% 
   group_by(date) %>% 
   summarize(
@@ -200,10 +202,13 @@ mfy.dv<-mfy.lev %>%
   add_WYD(., "date") %>% 
   select(date, flow_cfs, flow_cms, DOY, DOWY, WY)
 
-summary(mfy.dv)
-ggplot() + geom_line(data=mfy.dv, aes(x=date, y=flow_cfs, color=as.factor(WY)), show.legend = F) + scale_y_continuous(limits = c(0,8000))
+summary(mfy_dv)
+save(mfy_dv, file = "data/MFY_dv_ORH_YC5_2003_2016.rda")
 
-mfy.w <- analyze.wavelet(mfy.dv, my.series = 3, dt = 1/30)
+
+ggplot() + geom_line(data=mfy_dv, aes(x=date, y=flow_cfs, color=as.factor(WY)), show.legend = F) + scale_y_continuous(limits = c(0,8000))
+
+mfy.w <- analyze.wavelet(mfy_dv, my.series = 3, dt = 1/30)
 
 wt.image(mfy.w, main = "MFY Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
@@ -367,6 +372,116 @@ df.mfa <- MFA_dv %>%
 Col.mfa<-hydrostats::Colwells(df.mfa)
 (seasonality <- tibble(site=c("mfa"), MP_metric=c(Col.mfa$MP)))
 
+
+
+
+# RUBICON 15 MIN DATA------------------------------------------------------
+
+library(ggplot2, quietly = T)
+library(dplyr)
+library(readxl)
+library(lubridate)
+
+# read in all data and merge together:
+f_rub_15 <- function(file){
+  library(readxl)
+  library(dplyr)
+  library(lubridate)
+  
+  # create data
+  df<- read_xlsx(path = file, skip=1) %>% 
+    mutate(times = paste0(hour(Time), ":",minute(Time),":",second(Time)),
+           datetime = ymd_hms(paste0(as.character(Date), " ", times))) %>%
+    rename(flow_cfs = Q) %>% 
+    select(datetime, flow_cfs)
+  
+  if(file.exists("data/RUB_iv_PCWA_2009-2016.rda")){
+    load("data/RUB_iv_PCWA_2009-2016.rda")
+    RUB_iv <- bind_rows(RUB_iv, df) %>% distinct(datetime, .keep_all = T)
+    save(RUB_iv, file = paste0("data/RUB_iv_PCWA_2009-2016.rda"))
+  } else {
+    RUB_iv <- df
+    save(RUB_iv, file= paste0("data/RUB_iv_PCWA_2009-2016.rda"))
+  }
+  assign("RUB_iv", df, envir = .GlobalEnv)
+}
+
+# run function on single file
+f_rub_15("data/RUB_15min_flow/R-30.2009.xlsx")
+
+# run function on all files
+for(i in list.files(path = "data/RUB_15min_flow", full.names = T)){
+  print(i)
+  f_rub_15(i)}
+
+### COMPLETED ON 5/8/17
+
+# load IV data to see it worked
+load("data/RUB_iv_PCWA_2009-2016.rda")
+RUB_iv <- add_WYD(RUB_iv, datecolumn = "datetime")
+
+summary(RUB_iv)
+
+## NOW PLOT AND ANALYZE
+ggplot() + geom_line(data=RUB_iv, aes(x=datetime, y=flow_cfs), show.legend = F) #+ 
+  #facet_grid(as.factor(RUB_iv$WY)~., scales = "free")
+
+# plot
+ggplot() + geom_line(data=RUB_iv, aes(x=datetime, y=flow_cfs), show.legend = F, color="darkblue") + ylab("log[Discharge] (cms)") +xlab("") + theme_bw() + scale_y_log10()+ 
+  facet_zoom(x = WY == 2012, shrink=TRUE)# + ylim(c(0,500))
+ggsave(filename = "figs/RUB_log_flow_facet_zoom.png",width = 9, height = 7, units = "in")
+
+
+# MAKE DAILY
+
+RUB_dv <- RUB_iv %>%
+  mutate(date = floor_date(datetime, unit="days")) %>% 
+  group_by(date) %>% 
+  arrange(date) %>% 
+  summarize("flow_avg_cfs" = mean(flow_cfs, na.rm = T),
+            "flow_CV" = 100*sd(flow_cfs)/mean(flow_cfs)) %>% 
+  mutate("site"="RUB") %>%
+  add_WYD(., "date") %>% 
+  select(site, date, flow_avg_cfs, flow_CV, everything()) %>% 
+  filter(!is.na(flow_CV)) %>% as.data.frame()
+
+summary(RUB_dv)
+save(RUB_dv, file = "data/RUB_dv_PCWA_2009-2016.rda") # save data
+
+# daily single facet
+ggplot() + geom_line(data=RUB_dv, aes(x=date, y=flow_avg_cfs, color=as.factor(WY)), show.legend = F)
+# daily facetted
+ggplot() + geom_line(data=RUB_dv, aes(x=DOWY, y=flow_avg_cfs, color=as.factor(WY)), show.legend = F) + 
+  facet_grid(WY~.)
+
+# daily CV
+ggplot() + geom_line(data=RUB_dv, aes(x=date, y=flow_CV, color=as.factor(WY)), show.legend = F)
+
+# quick wavelet analysis:
+rub.w <- analyze.wavelet(RUB_dv, my.series = 3, dt = 1/30) # cdec
+
+wt.image(rub.w, main = "Rubicon Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(rub.w)
+
+plotRUB<-rub.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+ggplot() + geom_line(data=plotRUB, aes(x=Period, y=Power.avg))+geom_point(data=plotRUB, aes(x=Period,y=Power.avg), col=ifelse(plotRUB$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,32, 2), limits = c(0,32)) + xlab("Months")
+
+# quick colwell analysis of seasonality:
+## From Tonkin et al 2017: M (Contingency) as metric of seasonality
+## To standardize the role of seasonality in relation to overall predictability,
+## we divided (M) by overall predictability (the sum of (M) and constancy (C)
+
+# standardize
+df.rub <- RUB_dv %>%  
+  rename(Date=date, Q=flow_avg_cfs)
+
+# analyze
+Col.rub<-hydrostats::Colwells(df.rub)
+(seasonality <- tibble(site=c("RUB"), MP_metric=c(Col.rub$MP)))
 
 # RUBICON -----------------------------------------------------------------
 
