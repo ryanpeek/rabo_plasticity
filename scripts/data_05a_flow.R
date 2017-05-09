@@ -375,6 +375,27 @@ Col.mfa<-hydrostats::Colwells(df.mfa)
 
 
 
+# MFA_hourly --------------------------------------------------------------
+load("./data/MFA_hv_CDEC_OXB_1997-2017.rda")
+
+MFA_hv <- MFA_hv %>% select(datetime, flow_cfs, WY)
+
+# quick wavelet analysis WEEKLY:
+mfa.w <- analyze.wavelet(MFA_hv, my.series = 2, dt = 1/168)
+
+wt.image(mfa.w, main = "MFA Seasonality of Daily Flow",
+         legend.params = list(lab = "cross-wavelet power levels"),
+         timelab = "Time (days)", periodlab = "period (months)")
+
+wt.avg(mfa.w)
+
+plotMFA.hr<-mfa.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
+
+save(plotMFA.hr,file = "data/MFA_hr_wavelet_power.rda")
+
+ggplot() + geom_line(data=plotMFA.hr, aes(x=Period, y=Power.avg))+geom_point(data=plotMFA.hr, aes(x=Period,y=Power.avg), col=ifelse(plotMFA.hr$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,64, 2), limits = c(0,64))
+
+
 # RUBICON 15 MIN DATA------------------------------------------------------
 
 library(ggplot2, quietly = T)

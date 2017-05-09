@@ -24,24 +24,76 @@ library(tidyverse)
 library(lubridate)
 library(ggrepel)
 library(viridis)
+source("scripts/functions/f_doy.R")
 
 # LOAD DATA ---------------------------------------------------------------
 
+# all other dat
 load("data/master_dat_2011-2016.rda") 
 
-load("data/NFA_dv_USGS_1941_2017-04-28.rda")
+# flow
+load("data/NFA_dv_USGS_1941_2017-04-28.rda") 
 load("data/NFY_dv_USGS_1930_2017-04-28.rda")
 load("data/MFY_dv_CDEC_ORH_2000_2017.rda")
-MFY_dv <- mfy_dv
 load("data/MFA_dv_CDEC_OXB_1997-2017.rda") 
 load("data/RUB_dv_PCWA_2009-2016.rda")
 load("data/SFY_dv_CDEC_JBR_1998-2017.rda")
 
+# tidy
+MFA_dv <- MFA_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
+  mutate(site="MFA") %>% select(-flow_CV)
+
+MFY_dv <- mfy_dv %>% mutate(site="MFY")
+rm(mfy_dv)
+
+NFA_dv <- NFA_dv %>% rename(station=gageNo) %>% 
+  select(date, flow_cfs, station) %>% 
+  mutate(site="NFA", station=as.character(station)) %>% 
+  add_WYD(., "date")
+  
+NFY_dv <- NFY_dv %>% rename(station=gageNo) %>% 
+  select(date, flow_cfs, station) %>% 
+  mutate(site="NFY", station=as.character(station)) %>% 
+  add_WYD(., "date")
+
+RUB_dv <- RUB_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
+  mutate(site="RUB", station="PCWA", date=as.Date(date)) %>% 
+  select(-flow_CV)
+
+SFY_dv <- SFY_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
+  mutate(site="SFY") %>% select(-flow_CV)
+
+# bind all flow data:
+flowdat <- bind_rows(MFA_dv, NFA_dv, RUB_dv, NFY_dv, MFY_dv, SFY_dv) %>% 
+  select(site, -station, date, flow_cfs, WY)
+
+# JOIN FLOW DATA ----------------------------------------------------------
+
+# join with master dat
+master_df <- left_join(master_df, flowdat, by = c("date", "site", "WY")) %>%
+  mutate(site = as.factor(site))
 
 # DATA PREP ---------------------------------------------------------------
-
+#df <- master_df
 df <- master_df %>% filter(site!="MFY")
 #df <- master_df %>% filter(site!="MFY", site!="MFA")
+
+
+# FILTER TO SAME TIME PERIOD FOR FLOWS ------------------------------------
+
+source("scripts/functions/f_doy.R")
+
+NFA_dv <- NFA_dv %>% 
+  add_WYD(., datecolumn = "date") %>% 
+  filter(WY>1996)
+
+MFA_dv <- MFA_dv %>% 
+  filter(WY>1996)
+
+NFY_dv <- NFY_dv %>% 
+  add_WYD(., datecolumn = "date") %>% 
+  filter(WY>1996)
+
 
 
 # NEW PLOTS: WTEMP vs DOWY ------------------------------------------------
@@ -52,9 +104,9 @@ df <- df %>% filter(DOY>105 & DOY<210)
 ggplot() + 
   geom_line(data=df, 
             aes(x=DOY, y=temp_7_avg, color=as.factor(WY), group=WY), show.legend = F) + 
-  #geom_ribbon(data=df, aes(x=DOY, ymin=10,ymax=12), fill="orange", alpha=0.4) + 
   geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=temp_7_avg, fill=as.factor(WY)), 
              show.legend = T, pch=21, color="gray20", size=4) + 
+  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=9), pch=21, stroke=0.5, color="black",size=4)+
   facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year")) +
   scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year")) +
   scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
@@ -65,7 +117,47 @@ ggplot() +
   labs(y=expression(paste("Water Temperature (",degree,"C)")), 
        title="7 Day Average Water Temperature")
 
-#ggsave(filename = "figs/watertemp7_breeding.png", width = 9, height = 6, units = "in")
+ggsave(filename = "figs/watertemp7_breeding.png", width = 9, height = 6, units = "in")
+
+
+# Lev: 7-Day Avg w threshold
+ggplot() + 
+  geom_line(data=df, 
+            aes(x=DOY, y=lev_avg, color=as.factor(WY), group=WY), show.legend = F) + 
+  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=lev_avg, fill=as.factor(WY)), 
+             show.legend = T, pch=21, color="gray20", size=4) + 
+  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=1.9), pch=21, stroke=0.5, color="black",size=4)+
+  facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
+  #scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                     legend.key=element_blank()) + 
+  #panel.grid.major = element_line(colour = 'gray80', linetype = 2)) +
+  labs(y="Avg Daily Stage (m)", x="",
+       title="Average Daily Stage (m)")
+
+ggsave(filename = "figs/lev_avg_by_WY_breeding.png", width = 9, height = 6, units = "in")
+
+# FLOW
+
+ggplot() + 
+  geom_line(data=df, 
+            aes(x=DOY, y=flow_cfs, color=as.factor(WY), group=WY), show.legend = F) + 
+  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=flow_cfs, fill=as.factor(WY)), 
+             show.legend = T, pch=21, color="gray20", size=4) + 
+  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=3500), pch=21, stroke=0.5, color="black",size=4)+
+  facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
+  #scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                     legend.key=element_blank()) + 
+  #panel.grid.major = element_line(colour = 'gray80', linetype = 2)) +
+  labs(y="Avg Daily Flow (cfs)", x="",
+       title="Average Daily Flow (cfs)")
+
+ggsave(filename = "figs/cfs_avg_by_WY_breeding.png", width = 9, height = 6, units = "in")
 
 
 # OLD PLOTS ---------------------------------------------------------------
@@ -118,6 +210,7 @@ nfa <- df %>% filter(site=="NFA")
 mfa <- df %>% filter(site=="MFA")
 rub <- df %>% filter(site=="RUB")
 nfy <- df %>% filter(site=="NFY")
+mfy <- df %>% filter(site=="MFY")
 sfy <- df %>% filter(site=="SFY")
 
 # calc colwell function:
@@ -160,23 +253,14 @@ sfy.c <- get.colwell(data = sfy, 2, 32, site = "SFY")
 
 (S_var3 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_ppt_mm") %>% bind_rows(S_var2))
 
-# CDEC_air_7
-nfa.c <- get.colwell(data = nfa, 2, 33, site = "NFA")
-mfa.c <- get.colwell(data = mfa, 2, 33, site = "MFA")
-rub.c <- get.colwell(data = rub, 2, 33, site = "RUB")
-nfy.c <- get.colwell(data = nfy, 2, 33, site = "NFY")
-sfy.c <- get.colwell(data = sfy, 2, 33, site = "SFY")
+# W_air_7_avg
+nfa.c <- get.colwell(data = nfa, 2, 24, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 24, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 24, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 24, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 24, site = "SFY")
 
-(S_var4 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_air_7") %>% bind_rows(S_var3))
-
-# CDEC_air_30
-nfa.c <- get.colwell(data = nfa, 2, 34, site = "NFA")
-mfa.c <- get.colwell(data = mfa, 2, 34, site = "MFA")
-rub.c <- get.colwell(data = rub, 2, 34, site = "RUB")
-nfy.c <- get.colwell(data = nfy, 2, 34, site = "NFY")
-sfy.c <- get.colwell(data = sfy, 2, 34, site = "SFY")
-
-(S_var5 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_air_30") %>% bind_rows(S_var4))
+(S_var4 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_air_7_avg") %>% bind_rows(S_var3))
 
 # W_humidity_avg
 nfa.c <- get.colwell(data = nfa, 2, 13, site = "NFA")
@@ -185,7 +269,7 @@ rub.c <- get.colwell(data = rub, 2, 13, site = "RUB")
 nfy.c <- get.colwell(data = nfy, 2, 13, site = "NFY")
 sfy.c <- get.colwell(data = sfy, 2, 13, site = "SFY")
 
-(S_var6 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_humidity_avg") %>% bind_rows(S_var5))
+(S_var5 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_humidity_avg") %>% bind_rows(S_var4))
 
 # FLOW
 
@@ -199,15 +283,17 @@ sfy.c <- get.colwell(data = SFY_dv, 2, 3, site = "SFY")
 
 #flow_bind <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, mfy.c, sfy.c) %>% mutate("var" = "flow_cfs") %>% arrange(MP_metric)
 
-final_bind <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, mfy.c, sfy.c) %>% mutate("var" = "flow_cfs") %>% 
-  bind_rows(S_var6)
+(final_bind <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, mfy.c, sfy.c) %>% mutate("var" = "flow_cfs") %>% 
+  bind_rows(S_var5))
 
-final_bind
+final_bind$site <- factor(final_bind$site, ordered = T,levels = c("NFA","RUB","MFA", "NFY","MFY","SFY"))
+levels(final_bind$site)
 
-ggplot() + 
-  geom_bar(data=final_bind, aes(x=site, y=MP_metric, fill=var), stat="identity", show.legend = F) + 
-  geom_hline(yintercept = 0.75, color="green", lty=2, alpha=0.9, lwd=0.9)+
-  facet_grid(var~.)
+final_bind %>% filter(!site=="MFY") %>% filter(var=="lev_avg" | var=="flow_cfs") %>% 
+  ggplot(.) + 
+  geom_bar(aes(x=site, y=MP_metric), fill=c(rep("#31688EFF",5), rep("#35B779FF",5)), stat="identity", show.legend = F) + theme_bw() + #scale_fill_viridis(discrete = T)+
+  geom_hline(yintercept = 0.75, color="#440154FF", lty=2, alpha=0.9, lwd=0.9) + #coord_flip() + facet_grid(.~var)
+  facet_grid(var~.) 
 
 save(final_bind, file = "models/colwell_variables.rda")
 
@@ -218,7 +304,7 @@ library(WaveletComp) # for wavelet analysis
 # RUB
 rub.w <- analyze.wavelet(RUB_dv, my.series = 3, dt = 1/30)
 
-pdf(file = "./figs/wavelet_RUB_dailyflow.pdf", width = 9, height = 6.6)
+pdf(file = "./figs/wavelet_RUB_dailyflow_decade.pdf", width = 9, height = 6.6)
 wt.image(rub.w, main = "RUB Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
@@ -233,7 +319,7 @@ ggplot() + geom_line(data=plotRUB, aes(x=Period, y=Power.avg))+geom_point(data=p
 # MFA
 mfa.w <- analyze.wavelet(MFA_dv, my.series = 3, dt = 1/30)
 
-pdf(file = "./figs/wavelet_MFA_dailyflow.pdf", width = 9, height = 6.6)
+pdf(file = "./figs/wavelet_MFA_dailyflow_decade.pdf", width = 9, height = 6.6)
 wt.image(mfa.w, main = "MFA Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
@@ -249,7 +335,7 @@ ggplot() + geom_line(data=plotMFA, aes(x=Period, y=Power.avg))+geom_point(data=p
 # NFA
 nfa.w <- analyze.wavelet(NFA_dv, my.series = 4, dt = 1/30) # usgs
 
-pdf(file = "./figs/wavelet_NFA_dailyflow.pdf", width = 9, height = 6.6)
+pdf(file = "./figs/wavelet_NFA_dailyflow_decade.pdf", width = 9, height = 6.6)
 wt.image(nfa.w, main = "NFA Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
@@ -265,7 +351,7 @@ ggplot() + geom_line(data=plotNFA, aes(x=Period, y=Power.avg))+geom_point(data=p
 # NFY
 nfy.w <- analyze.wavelet(NFY_dv, my.series = 4, dt = 1/30) # usgs
 
-pdf(file = "./figs/wavelet_NFY_dailyflow.pdf", width = 9, height = 6.6)
+pdf(file = "./figs/wavelet_NFY_dailyflow_decade.pdf", width = 9, height = 6.6)
 wt.image(nfy.w, main = "NFY Seasonality of Daily Flow",
          legend.params = list(lab = "cross-wavelet power levels"),
          timelab = "Time (days)", periodlab = "period (months)")
@@ -311,7 +397,8 @@ plotMFY<-mfy.w[c("Power.avg","Period","Power.avg.pval")] %>% as.data.frame
 
 ggplot() + geom_line(data=plotMFY, aes(x=Period, y=Power.avg))+geom_point(data=plotMFY, aes(x=Period,y=Power.avg), col=ifelse(plotMFY$Power.avg.pval<0.05, "red", "blue")) + scale_x_continuous(breaks=seq(0,32, 2), limits = c(0,32))
 
-
+# save multiple files:
+save(plotNFA, plotRUB, plotMFA, plotNFY,  plotMFY,  file = "models/wavelet_decade_plotpower.rda")
 
 # COMBINED COLWELL --------------------------------------------------------
 
