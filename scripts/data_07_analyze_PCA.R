@@ -67,18 +67,6 @@ SFY_dv <- SFY_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
 flowdat <- bind_rows(MFA_dv, NFA_dv, RUB_dv, NFY_dv, MFY_dv, SFY_dv) %>% 
   select(site, -station, date, flow_cfs, WY)
 
-# JOIN FLOW DATA ----------------------------------------------------------
-
-# join with master dat
-master_df <- left_join(master_df, flowdat, by = c("date", "site", "WY")) %>%
-  mutate(site = as.factor(site))
-
-# DATA PREP ---------------------------------------------------------------
-#df <- master_df
-df <- master_df %>% filter(site!="MFY")
-#df <- master_df %>% filter(site!="MFY", site!="MFA")
-
-
 # FILTER TO SAME TIME PERIOD FOR FLOWS ------------------------------------
 
 source("scripts/functions/f_doy.R")
@@ -96,57 +84,116 @@ NFY_dv <- NFY_dv %>%
 
 
 
+
+# JOIN FLOW DATA ----------------------------------------------------------
+
+# join with master dat
+master_df <- left_join(flowdat, master_df, by = c("date", "site", "WY")) %>%
+  mutate(site = as.factor(site)) %>% 
+  rename(flow_station=station) %>% 
+  add_WYD(datecolumn = "date")
+
+master_df <- filter(master_df, WY>2010 & WY<2017)
+
+# DATA PREP ---------------------------------------------------------------
+df <- master_df
+#df <- master_df %>% filter(site!="MFY")
+#df <- master_df %>% filter(site!="MFY", site!="MFA")
+df <- df %>% filter(DOY>105 & DOY<210)
+
+
 # NEW PLOTS: WTEMP vs DOWY ------------------------------------------------
 
 # WTemp: 7-Day Avg w threshold
-df <- df %>% filter(DOY>105 & DOY<210)
-
 ggplot() + 
-  geom_line(data=df, 
-            aes(x=DOY, y=temp_7_avg, color=as.factor(WY), group=WY), show.legend = F) + 
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=temp_7_avg, fill=as.factor(WY)), 
+  geom_line(data=df, aes(x=DOY, y=temp_7_avg, color=as.factor(WY),
+                         group=WY), show.legend = F) + 
+  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=temp_7_avg,
+                                               fill=as.factor(WY)),
              show.legend = T, pch=21, color="gray20", size=4) + 
-  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=9), pch=21, stroke=0.5, color="black",size=4)+
-  facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year")) +
-  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year")) +
-  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
+  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=9),
+             pch=21, stroke=0.5, color="#440154FF",size=4)+
+  scale_color_viridis(discrete = T, 
+                      guide = guide_legend(title = "Water Year")) +
+  scale_fill_viridis(discrete = T, 
+                     guide = guide_legend(title = "Water Year")) +
+  
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),
+                     labels=c("Apr-15","May-1","May-15","Jun-1",
+                              "Jun-15","Jul-1","Jul-15","Aug-1")) +
   scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
+  geom_hline(yintercept = 10, color="maroon", lty=2)+
+  #geom_hline(yintercept = 11, color="orange", lty=2)+
   theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
                      legend.key=element_blank()) + 
-                     #panel.grid.major = element_line(colour = 'gray80', linetype = 2)) +
   labs(y=expression(paste("Water Temperature (",degree,"C)")), 
-       title="7 Day Average Water Temperature")
+       title="7 Day Average Water Temperature", x="") +
+  facet_grid(site~.)#, scales="free_x")
 
-ggsave(filename = "figs/watertemp7_breeding.png", width = 9, height = 6, units = "in")
+ggsave(filename = "figs/watertemp7_breeding_10C.png", width = 9, height = 6, units = "in")
 
 
-# Lev: 7-Day Avg w threshold
+filter(df, !is.na(totalEM)) %>% n_distinct()
+filter(df, !is.na(totalEM) & temp_7_avg<11) %>% n_distinct()
+filter(df, !is.na(totalEM) & temp_7_avg>10) %>% n_distinct()/22
+# span of 64 days! (DOY 118 to 182)
+# W_air_7_max range: 14.8-30.4, mean=24
+# W_air_7_avg range: 9.3-22.4, mean=17.1
+# temp_30_min range: 4.5, 11.0, mean=9.2
+# temp_30_avg range: 5, 12.4, mean=10.3
+# temp_7_max range: 7.5, 16.9, mean=13.1
+# temp_7_avg range: 6.9, 14.7, mean=11.8
+# flow_cfs: 78 to 2260
+
+
+# Log Flows cfs
 ggplot() + 
-  geom_line(data=df, 
-            aes(x=DOY, y=lev_avg, color=as.factor(WY), group=WY), show.legend = F) + 
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=lev_avg, fill=as.factor(WY)), 
+  geom_line(data=df, aes(x=DOY, y=flow_cfs, color=as.factor(WY)),
+            show.legend = T) + 
+  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=flow_cfs, 
+                                               fill=as.factor(WY)), 
              show.legend = T, pch=21, color="gray20", size=4) + 
-  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=1.9), pch=21, stroke=0.5, color="black",size=4)+
-  facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
-  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
-  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
-  #scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
+  
+  # estimated EGG dates
+  geom_point(data=df[df$site=="NFY" & df$WY==2011,], 
+             aes(x=181, y=2500), pch=21, stroke=0.5, 
+             color="#440154FF",size=4, show.legend = F) +
+  geom_point(data=df[df$site=="RUB" & df$WY==2016,], 
+             aes(x=145, y=100), pch=21, stroke=0.5, 
+             color="#FDE725FF",size=4, show.legend = F) +
+  
+  scale_color_viridis(discrete = T, 
+                      guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_fill_viridis(discrete = T, 
+                     guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_y_log10()+
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),
+                     labels=c("Apr-15","May-1","May-15","Jun-1",
+                              "Jun-15","Jul-1","Jul-15","Aug-1")) +
   theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
                      legend.key=element_blank()) + 
-  #panel.grid.major = element_line(colour = 'gray80', linetype = 2)) +
-  labs(y="Avg Daily Stage (m)", x="",
-       title="Average Daily Stage (m)")
+  labs(y="log(Discharge) (cfs)", x="", 
+       title="Log of Daily Flow (cfs)")+
+  facet_grid(site~.)#, scales="free_y")
 
-ggsave(filename = "figs/lev_avg_by_WY_breeding.png", width = 9, height = 6, units = "in")
+ggsave(filename = "figs/logflow_breeding.png", width = 9, height = 6, units = "in")
+
 
 # FLOW
+df <- master_df 
 
 ggplot() + 
   geom_line(data=df, 
             aes(x=DOY, y=flow_cfs, color=as.factor(WY), group=WY), show.legend = F) + 
+  
   geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=flow_cfs, fill=as.factor(WY)), 
              show.legend = T, pch=21, color="gray20", size=4) + 
-  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=3500), pch=21, stroke=0.5, color="black",size=4)+
+  # estimated egg dates
+  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=3500), pch=21, stroke=0.5, color="#440154FF",size=4)+
+  geom_point(data=df[df$site=="RUB" & df$WY==2016,], 
+             aes(x=145, y=100), pch=21, stroke=0.5, 
+             color="#FDE725FF",size=4, show.legend = F) +
+  
   facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
   scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
   scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
@@ -157,7 +204,38 @@ ggplot() +
   labs(y="Avg Daily Flow (cfs)", x="",
        title="Average Daily Flow (cfs)")
 
-ggsave(filename = "figs/cfs_avg_by_WY_breeding.png", width = 9, height = 6, units = "in")
+
+# FLOW ALL YEARS
+ggplot() + 
+  geom_line(data=master_df, aes(x=date, y=flow_cfs+2, 
+                color=as.factor(WY)), show.legend = F) + 
+  geom_point(data=master_df[!is.na(master_df$totalEM),], 
+             aes(x=date, y=flow_cfs+1, fill=as.factor(WY)), 
+             show.legend = T, pch=21, color="gray20", size=4) + 
+  # estimated NFY 2011
+  geom_point(data=master_df[master_df$site=="NFY" & 
+                              master_df$WY==2011,], 
+             aes(x=ymd("2011-07-01"), y=2500), pch=21, stroke=0.5, 
+             color="#440154FF",size=4, show.legend = F) +
+  # estimated RUB 2016
+  geom_point(data=master_df[master_df$site=="RUB" & 
+                              master_df$WY==2016,], 
+             aes(x=ymd("2016-05-25"), y=120), pch=21, stroke=0.5, 
+             color="#FDE725FF",size=4, show.legend = F) +
+  
+  scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_y_log10()+
+  scale_x_date(date_breaks = "6 months", date_labels = "%b-%y")+
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                     legend.key=element_blank()) + 
+  labs(y="Avg Daily Flow (cfs)", x="",
+       title="Average Daily Flow (cfs)")+
+  facet_grid(site~., scales="free_y")
+
+
+ggsave(filename = "figs/cfs_log_by_WY_breeding.png", width = 9, height = 6, units = "in")
+
 
 
 # OLD PLOTS ---------------------------------------------------------------
