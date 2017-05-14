@@ -22,6 +22,10 @@ First let's take a look at some test data. Using a subset (say just pull the **N
 library(tidyverse)
 library(lubridate)
 
+load("data/master_dat_2011-2016.rda") 
+load("data/daily_flow_cfs_data_6sites.rda") # updated and merged flows:
+
+
 sites <- c("NFA", "NFY") # if you want to restrict the sites
 
 frogBreed <- read_csv("data/oviposition_start_mainstem_sites.csv") %>% 

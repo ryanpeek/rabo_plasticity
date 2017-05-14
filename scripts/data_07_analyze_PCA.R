@@ -31,11 +31,15 @@ source("scripts/functions/f_doy.R")
 # all other dat
 load("data/master_dat_2011-2016.rda") 
 
+
+
+# FLOW DATA ---------------------------------------------------------------
+
 # flow
-load("data/NFA_dv_USGS_1941_2017-04-28.rda") 
+load("data/NFA_dv_USGS_1941_2017-04-28.rda")
 load("data/NFY_dv_USGS_1930_2017-04-28.rda")
 load("data/MFY_dv_CDEC_ORH_2000_2017.rda")
-load("data/MFA_dv_CDEC_OXB_1997-2017.rda") 
+load("data/MFA_dv_CDEC_OXB_1997-2017.rda")
 load("data/RUB_dv_PCWA_2009-2016.rda")
 load("data/SFY_dv_CDEC_JBR_1998-2017.rda")
 
@@ -46,26 +50,31 @@ MFA_dv <- MFA_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
 MFY_dv <- mfy_dv %>% mutate(site="MFY")
 rm(mfy_dv)
 
-NFA_dv <- NFA_dv %>% rename(station=gageNo) %>% 
-  select(date, flow_cfs, station) %>% 
-  mutate(site="NFA", station=as.character(station)) %>% 
+NFA_dv <- NFA_dv %>% rename(station=gageNo) %>%
+  select(date, flow_cfs, station) %>%
+  mutate(site="NFA", station=as.character(station)) %>%
   add_WYD(., "date")
-  
-NFY_dv <- NFY_dv %>% rename(station=gageNo) %>% 
-  select(date, flow_cfs, station) %>% 
-  mutate(site="NFY", station=as.character(station)) %>% 
+
+NFY_dv <- NFY_dv %>% rename(station=gageNo) %>%
+  select(date, flow_cfs, station) %>%
+  mutate(site="NFY", station=as.character(station)) %>%
   add_WYD(., "date")
 
 RUB_dv <- RUB_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
-  mutate(site="RUB", station="PCWA", date=as.Date(date)) %>% 
+  mutate(site="RUB", station="PCWA", date=as.Date(date)) %>%
   select(-flow_CV)
 
 SFY_dv <- SFY_dv %>% rename(flow_cfs=flow_avg_cfs) %>%
   mutate(site="SFY") %>% select(-flow_CV)
 
 # bind all flow data:
-flowdat <- bind_rows(MFA_dv, NFA_dv, RUB_dv, NFY_dv, MFY_dv, SFY_dv) %>% 
+flowdat <- bind_rows(MFA_dv, NFA_dv, RUB_dv,
+                     NFY_dv, MFY_dv, SFY_dv) %>%
   select(site, -station, date, flow_cfs, WY)
+
+flowdf <- bind_rows(MFA_dv, NFA_dv, RUB_dv, NFY_dv, MFY_dv, SFY_dv) %>% select(site, station, date:DOWY)
+
+save(flowdf, file = "data/daily_flow_cfs_data_6sites.rda")
 
 # FILTER TO SAME TIME PERIOD FOR FLOWS ------------------------------------
 
@@ -81,9 +90,6 @@ MFA_dv <- MFA_dv %>%
 NFY_dv <- NFY_dv %>% 
   add_WYD(., datecolumn = "date") %>% 
   filter(WY>1996)
-
-
-
 
 # JOIN FLOW DATA ----------------------------------------------------------
 
