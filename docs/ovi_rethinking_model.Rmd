@@ -22,7 +22,7 @@ First let's take a look at some test data. Using a subset (say just pull the **N
 library(tidyverse)
 library(lubridate)
 
-load("data/master_dat_2011-2016.rda") 
+load("data/master_dat_2011-2016") 
 load("data/daily_flow_cfs_data_6sites.rda") # updated and merged flows:
 
 # sites <- c("NFA", "NFY") # if you want to restrict the sites
@@ -35,7 +35,7 @@ master_df <- master_df %>%
   left_join(., sites, by="site") %>% 
   mutate(EM_per_km=totalEM/len_km)
 
-save(master_df, file = "./data/master_dat_2011-2016")
+save(master_df, file = "./data/master_dat_2011-2016.rda")
 
 #df <- master_df
 # df <- master_df %>% filter(site!="MFY")
