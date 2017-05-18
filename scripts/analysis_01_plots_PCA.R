@@ -29,31 +29,25 @@ source("scripts/functions/f_doy.R")
 
 # LOAD DATA ---------------------------------------------------------------
 
-# all other dat
 load("data/master_dat_2011-2016.rda") 
 load("data/flow_dv_cfs_2011_6sites.rda")
-#load("data/flow_dv_cfs_full_6sites.rda")
-
-master_df <- filter(master_df, WY>2010 & WY<2017)
+load("data/flow_dv_cfs_full_6sites.rda")
 
 # DATA PREP ---------------------------------------------------------------
 df <- master_df
-#df <- master_df %>% filter(site!="MFY")
-#df <- master_df %>% filter(site!="MFY", site!="MFA")
-df <- df %>% filter(DOY>105 & DOY<210)
+# df <- master_df %>% filter(site!="MFY")
+df <- master_df %>% filter(month(date)>3 & month(date)<8)
 
 
-# NEW PLOTS: WTEMP vs DOWY ------------------------------------------------
+# PLOTS: WTEMP vs DOWY ------------------------------------------------
 
 # WTemp: 7-Day Avg w threshold
 ggplot() + 
   geom_line(data=df, aes(x=DOY, y=temp_7_avg, color=as.factor(WY),
                          group=WY), show.legend = F) + 
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=temp_7_avg,
+  geom_point(data=df[!is.na(df$missData),], aes(x=DOY, y=temp_7_avg,
                                                fill=as.factor(WY)),
              show.legend = T, pch=21, color="gray20", size=4) + 
-  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=9),
-             pch=21, stroke=0.5, color="#440154FF",size=4)+
   scale_color_viridis(discrete = T, 
                       guide = guide_legend(title = "Water Year")) +
   scale_fill_viridis(discrete = T, 
@@ -74,9 +68,12 @@ ggplot() +
 ggsave(filename = "figs/watertemp7_breeding_10C.png", width = 9, height = 6, units = "in")
 
 
-filter(df, !is.na(totalEM)) %>% n_distinct()
-filter(df, !is.na(totalEM) & temp_7_avg<11) %>% n_distinct()
-filter(df, !is.na(totalEM) & temp_7_avg>10) %>% n_distinct()/22
+# SUMMARIZE DATA ----------------------------------------------------------
+
+
+filter(df, !is.na(missData)) %>% n_distinct()
+filter(df, !is.na(missData) & temp_7_avg>10) %>% n_distinct()/25 # nearly 90% fall into temps above 7 day avg of 10 degrees C
+
 # span of 64 days! (DOY 118 to 182)
 # W_air_7_max range: 14.8-30.4, mean=24
 # W_air_7_avg range: 9.3-22.4, mean=17.1
@@ -84,25 +81,20 @@ filter(df, !is.na(totalEM) & temp_7_avg>10) %>% n_distinct()/22
 # temp_30_avg range: 5, 12.4, mean=10.3
 # temp_7_max range: 7.5, 16.9, mean=13.1
 # temp_7_avg range: 6.9, 14.7, mean=11.8
-# flow_cfs: 78 to 2260
+# Q_cfs: 78 to 2260
+
+
+
+# PLOTS: LOG-Q vs DOY ---------------------------------------------------------
 
 
 # Log Flows cfs
 ggplot() + 
-  geom_line(data=df, aes(x=DOY, y=flow_cfs, color=as.factor(WY)),
+  geom_line(data=df, aes(x=DOY, y=Q_cfs, color=as.factor(WY)),
             show.legend = T) + 
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=flow_cfs, 
+  geom_point(data=df[!is.na(df$missData),], aes(x=DOY, y=Q_cfs, 
                                                fill=as.factor(WY)), 
              show.legend = T, pch=21, color="gray20", size=4) + 
-  
-  # estimated EGG dates
-  geom_point(data=df[df$site=="NFY" & df$WY==2011,], 
-             aes(x=181, y=2500), pch=21, stroke=0.5, 
-             color="#440154FF",size=4, show.legend = F) +
-  geom_point(data=df[df$site=="RUB" & df$WY==2016,], 
-             aes(x=145, y=100), pch=21, stroke=0.5, 
-             color="#FDE725FF",size=4, show.legend = F) +
-  
   scale_color_viridis(discrete = T, 
                       guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
   scale_fill_viridis(discrete = T, 
@@ -120,24 +112,21 @@ ggplot() +
 ggsave(filename = "figs/logflow_breeding.png", width = 9, height = 6, units = "in")
 
 
-# FLOW
-df <- master_df 
+
+# PLOTS: Q vs. DOY -------------------------------------------------------
 
 ggplot() + 
   geom_line(data=df, 
-            aes(x=DOY, y=flow_cfs, color=as.factor(WY), group=WY), show.legend = F) + 
+            aes(x=DOY, y=Q_cfs, color=as.factor(WY), group=WY), show.legend = F) + 
   
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=DOY, y=flow_cfs, fill=as.factor(WY)), 
-             show.legend = T, pch=21, color="gray20", size=4) + 
-  # estimated egg dates
-  geom_point(data=df[df$site=="NFY" & df$WY==2011,], aes(x=180, y=3500), pch=21, stroke=0.5, color="#440154FF",size=4)+
-  geom_point(data=df[df$site=="RUB" & df$WY==2016,], 
-             aes(x=145, y=100), pch=21, stroke=0.5, 
-             color="#FDE725FF",size=4, show.legend = F) +
-  
-  facet_grid(site~., scales="free_x") + scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
-  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
-  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),labels=c("Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
+  geom_point(data=df[!is.na(df$missData),], aes(x=DOY, y=Q_cfs, fill=as.factor(WY)), 
+             show.legend = T, pch=21, color="gray20", size=4) +
+  facet_grid(site~., scales="free_x") + 
+  scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
+  scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) + guides(color=FALSE)+
+  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),
+                     labels=c("Apr-15","May-1","May-15","Jun-1",
+                              "Jun-15","Jul-1","Jul-15","Aug-1")) +
   #scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
   theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
                      legend.key=element_blank()) + 
@@ -146,36 +135,95 @@ ggplot() +
        title="Average Daily Flow (cfs)")
 
 
-# FLOW ALL YEARS
+ggsave(filename = "figs/cfs_DOY_by_breeding.png", width = 9, height = 6, units = "in")
+
+# PLOTS: LOG FLOW ALL YEARS ---------------------------------------------------
+
 ggplot() + 
-  geom_line(data=master_df, aes(x=date, y=flow_cfs+2, 
-                color=as.factor(WY)), show.legend = F) + 
-  geom_point(data=master_df[!is.na(master_df$totalEM),], 
-             aes(x=date, y=flow_cfs+1, fill=as.factor(WY)), 
-             show.legend = T, pch=21, color="gray20", size=4) + 
-  # estimated NFY 2011
-  geom_point(data=master_df[master_df$site=="NFY" & 
-                              master_df$WY==2011,], 
-             aes(x=ymd("2011-07-01"), y=2500), pch=21, stroke=0.5, 
-             color="#440154FF",size=4, show.legend = F) +
-  # estimated RUB 2016
-  geom_point(data=master_df[master_df$site=="RUB" & 
-                              master_df$WY==2016,], 
-             aes(x=ymd("2016-05-25"), y=120), pch=21, stroke=0.5, 
-             color="#FDE725FF",size=4, show.legend = F) +
+  geom_line(data=master_df, aes(x=date, y=Q_cfs+2, 
+                color=as.factor(WY)), show.legend = T) + 
   
+  geom_point(data=master_df[!is.na(master_df$missData),], 
+             aes(x=date, y=Q_cfs+2, fill=as.factor(WY)), 
+             show.legend = T, pch=21,  size=4) + 
+
   scale_color_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
   scale_fill_viridis(discrete = T, guide = guide_legend(title = "Water Year & \n Oviposition Date")) +
-  scale_y_log10()+
+  scale_y_log10()+ guides(color=FALSE)+
   scale_x_date(date_breaks = "6 months", date_labels = "%b-%y")+
   theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
                      legend.key=element_blank()) + 
-  labs(y="Avg Daily Flow (cfs)", x="",
-       title="Average Daily Flow (cfs)")+
+  labs(y="Avg Daily [log]Flow (cfs)", x="",
+       title="Average Daily log Flow (cfs)")+
   facet_grid(site~., scales="free_y")
 
-
 ggsave(filename = "figs/cfs_log_by_WY_breeding.png", width = 9, height = 6, units = "in")
+
+
+# CV by Site & WY -------------------------------------------------------------
+
+ggplot() + geom_line(data=master_df, aes(x=DOWY, y=temp_CV, color=site)) +
+  facet_grid(site~., scales = "free_x") +
+ scale_x_continuous(breaks=c(1, 32, 62, 93, 121,
+                            152, 182, 213, 243,
+                             274, 305, 336),
+                    labels=c("Oct", "Nov", "Dec", "Jan", "Feb",
+                             "Mar", "Apr","May","Jun",
+                             "Jul","Aug","Sep")) +
+  geom_ribbon(data=df[df$DOWY>182 & df<273,], aes(x=DOWY, ymin=0, ymax=60), fill="forestgreen", alpha=0.3)
+
+
+# Q-7_cfs -----------------------------------------------------------------
+
+ggplot() + 
+  geom_line(data=master_df, 
+            aes(x=DOWY, y=Q_7_cfs, color=as.factor(WY)), show.legend = F) +
+  scale_color_viridis("WY",discrete = T) +
+  geom_point(data=master_df[!is.na(master_df$missData),], 
+             aes(x=DOWY, y=Q_7_cfs, fill=as.factor(WY)), 
+             pch=21,color="gray20",size=4) + 
+  scale_fill_viridis("WY",discrete = T)+
+  scale_x_continuous(breaks=c(1, 32, 62, 93, 121,
+                              152, 182, 213, 243,
+                              274, 305, 336),
+                     labels=c("Oct", "Nov", "Dec", "Jan", "Feb",
+                              "Mar", "Apr","May","Jun",
+                              "Jul","Aug","Sep")) +
+  facet_grid(site~., scales="free")
+
+# Q_7_CV
+ggplot() + 
+  geom_line(data=master_df, 
+            aes(x=DOWY, y=Q_7_CV, color=as.factor(WY)), show.legend = F) +
+  scale_color_viridis("WY",discrete = T) +
+  geom_point(data=master_df[!is.na(master_df$missData),], 
+             aes(x=DOWY, y=Q_7_CV, fill=as.factor(WY)), 
+             pch=21,color="gray20",size=4) + 
+  scale_fill_viridis("WY",discrete = T)+
+  scale_x_continuous(breaks=c(1, 32, 62, 93, 121,
+                              152, 182, 213, 243,
+                              274, 305, 336),
+                     labels=c("Oct", "Nov", "Dec", "Jan", "Feb",
+                              "Mar", "Apr","May","Jun",
+                              "Jul","Aug","Sep")) +
+  facet_grid(site~., scales="free")
+
+# deltQ
+ggplot() + 
+  geom_line(data=master_df, 
+            aes(x=DOWY, y=deltQ, color=as.factor(WY)), show.legend = F) +
+  scale_color_viridis("WY",discrete = T) +
+  geom_point(data=master_df[!is.na(master_df$missData),], 
+             aes(x=DOWY, y=deltQ, fill=as.factor(WY)), 
+             pch=21,color="gray20",size=4) + xlab("")+ 
+  scale_fill_viridis("WY",discrete = T)+ ylim(-2,1)+
+  scale_x_continuous(breaks=c(1, 32, 62, 93, 121,
+                              152, 182, 213, 243,
+                              274, 305, 336),
+                     labels=c("Oct", "Nov", "Dec", "Jan", "Feb",
+                              "Mar", "Apr","May","Jun",
+                              "Jul","Aug","Sep")) +
+  facet_grid(site~., scales="free")
 
 
 
@@ -186,7 +234,7 @@ ggplot() +
   geom_line(data=df, 
             aes(x=date, y=temp_7_avg, color=site, group=WY), show.legend = F) +
   geom_ribbon(data=df, aes(x=date, ymin=10,ymax=12), fill="orange", alpha=0.4) + xlab("")+ ylab("7-day Avg Water Temp (C)")+
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=date, y=temp_7_avg, fill=site), show.legend = F, pch=21,color="gray20",size=4) + 
+  geom_point(data=df[!is.na(df$missData),], aes(x=date, y=temp_7_avg, fill=site), show.legend = F, pch=21,color="gray20",size=4) + 
   facet_grid(site~WY, scales="free_x")
 
 ggsave(filename = "figs/watertemp7_breeding.png", width = 9, height = 6, units = "in")
@@ -196,7 +244,7 @@ ggsave(filename = "figs/watertemp7_breeding.png", width = 9, height = 6, units =
 ggplot() + 
   geom_line(data=df, 
             aes(x=date, y=lev_7_avg, color=site, group=WY), show.legend = F) +
-  geom_point(data=df[!is.na(df$totalEM),], aes(x=date, y=lev_7_avg, fill=site), show.legend = F,
+  geom_point(data=df[!is.na(df$missData),], aes(x=date, y=lev_7_avg, fill=site), show.legend = F,
              pch=21,color="gray20",size=4) + 
   xlab("")+ ylab("7-day Avg Stage (m)")+
   facet_grid(site~WY, scales="free")
@@ -204,18 +252,6 @@ ggplot() +
 ggsave(filename = "figs/stage7_breeding.png", width = 9, height = 6, units = "in")
 
 
-# Stage vs. Temp: 7-day avg
-ggplot() + 
-  geom_point(data=df[!is.na(df$totalEM),],
-            aes(x=temp_7_avg, y=W_air_7_min, shape=site),
-            size=4.1)  +
-  geom_point(data=df[!is.na(df$totalEM),], 
-             aes(x=temp_7_avg, y=W_air_7_min, shape=site, color=as.factor(WY)),
-             size=4)  + 
-  scale_color_viridis(discrete = T, option = "D")
-
-ggsave(filename = "figs/air7_temp7_breeding.png", width = 9, height = 6, units = "in")
-  
 
 # COLWELL SEASONALITY INDEX -----------------------------------------------
 
@@ -254,32 +290,41 @@ sfy.c <- get.colwell(data = sfy, 2, 3, site = "SFY")
 
 (S_var1 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="lev_avg"))
 
-# temp_avg
-nfa.c <- get.colwell(data = nfa, 2, 6, site = "NFA")
-mfa.c <- get.colwell(data = mfa, 2, 6, site = "MFA")
-rub.c <- get.colwell(data = rub, 2, 6, site = "RUB")
-nfy.c <- get.colwell(data = nfy, 2, 6, site = "NFY")
-sfy.c <- get.colwell(data = sfy, 2, 6, site = "SFY")
+# lev_CV
+nfa.c <- get.colwell(data = nfa, 2, 4, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 4, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 4, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 4, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 4, site = "SFY")
 
-(S_var2 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="temp_avg") %>% bind_rows(S_var1))
+(S_var2 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="lev_CV") %>% bind_rows(S_var1))
+
+# temp_7_avg
+nfa.c <- get.colwell(data = nfa, 2, 16, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 16, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 16, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 16, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 16, site = "SFY")
+
+(S_var3 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="temp_7_avg") %>% bind_rows(S_var2))
 
 # CDEC_ppt_mm
-nfa.c <- get.colwell(data = nfa, 2, 32, site = "NFA")
-mfa.c <- get.colwell(data = mfa, 2, 32, site = "MFA")
-rub.c <- get.colwell(data = rub, 2, 32, site = "RUB")
-nfy.c <- get.colwell(data = nfy, 2, 32, site = "NFY")
-sfy.c <- get.colwell(data = sfy, 2, 32, site = "SFY")
+nfa.c <- get.colwell(data = nfa, 2, 25, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 25, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 25, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 25, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 25, site = "SFY")
 
-(S_var3 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_ppt_mm") %>% bind_rows(S_var2))
+(S_var4 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="CDEC_ppt_mm") %>% bind_rows(S_var3))
 
 # W_air_7_avg
-nfa.c <- get.colwell(data = nfa, 2, 24, site = "NFA")
-mfa.c <- get.colwell(data = mfa, 2, 24, site = "MFA")
-rub.c <- get.colwell(data = rub, 2, 24, site = "RUB")
-nfy.c <- get.colwell(data = nfy, 2, 24, site = "NFY")
-sfy.c <- get.colwell(data = sfy, 2, 24, site = "SFY")
+nfa.c <- get.colwell(data = nfa, 2, 21, site = "NFA")
+mfa.c <- get.colwell(data = mfa, 2, 21, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 21, site = "RUB")
+nfy.c <- get.colwell(data = nfy, 2, 21, site = "NFY")
+sfy.c <- get.colwell(data = sfy, 2, 21, site = "SFY")
 
-(S_var4 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_air_7_avg") %>% bind_rows(S_var3))
+(S_var5 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_air_7_avg") %>% bind_rows(S_var4))
 
 # W_humidity_avg
 nfa.c <- get.colwell(data = nfa, 2, 13, site = "NFA")
@@ -288,33 +333,58 @@ rub.c <- get.colwell(data = rub, 2, 13, site = "RUB")
 nfy.c <- get.colwell(data = nfy, 2, 13, site = "NFY")
 sfy.c <- get.colwell(data = sfy, 2, 13, site = "SFY")
 
-(S_var5 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_humidity_avg") %>% bind_rows(S_var4))
+(S_var6 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="W_humidity_avg") %>% bind_rows(S_var5))
 
 # FLOW
 
-# flow_cfs
-nfa.c <- get.colwell(data = NFA_dv, 3, 4, site = "NFA")
-nfy.c <- get.colwell(data = NFY_dv, 3, 4, site = "NFY")
-mfy.c <- get.colwell(data = MFY_dv, 2, 3, site = "MFY")
-mfa.c <- get.colwell(data = MFA_dv, 2, 3, site = "MFA")
-rub.c <- get.colwell(data = RUB_dv, 2, 3, site = "RUB")
-sfy.c <- get.colwell(data = SFY_dv, 2, 3, site = "SFY")
+# Q_cfs
+nfa.c <- get.colwell(data = nfa, 2, 36, site = "NFA")
+nfy.c <- get.colwell(data = nfy, 2, 36, site = "NFY")
+mfy.c <- get.colwell(data = mfy, 2, 36, site = "MFY")
+mfa.c <- get.colwell(data = mfa, 2, 36, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 36, site = "RUB")
+sfy.c <- get.colwell(data = sfy, 2, 36, site = "SFY")
 
-#flow_bind <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, mfy.c, sfy.c) %>% mutate("var" = "flow_cfs") %>% arrange(MP_metric)
+(S_var7 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="Q_cfs") %>% bind_rows(S_var6))
 
-(final_bind <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, mfy.c, sfy.c) %>% mutate("var" = "flow_cfs") %>% 
-  bind_rows(S_var5))
+
+# Q_CV
+nfa.c <- get.colwell(data = nfa, 2, 37, site = "NFA")
+nfy.c <- get.colwell(data = nfy, 2, 37, site = "NFY")
+mfy.c <- get.colwell(data = mfy, 2, 37, site = "MFY")
+mfa.c <- get.colwell(data = mfa, 2, 37, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 37, site = "RUB")
+sfy.c <- get.colwell(data = sfy, 2, 37, site = "SFY")
+
+(S_var8 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="Q_CV") %>% bind_rows(S_var7))
+
+
+# deltQ
+nfa.c <- get.colwell(data = nfa, 2, 42, site = "NFA")
+nfy.c <- get.colwell(data = nfy, 2, 42, site = "NFY")
+mfy.c <- get.colwell(data = mfy, 2, 42, site = "MFY")
+mfa.c <- get.colwell(data = mfa, 2, 42, site = "MFA")
+rub.c <- get.colwell(data = rub, 2, 42, site = "RUB")
+sfy.c <- get.colwell(data = sfy, 2, 42, site = "SFY")
+
+(S_var9 <- bind_rows(nfa.c, mfa.c, rub.c, nfy.c, sfy.c) %>% mutate("var"="deltQ") %>% bind_rows(S_var8))
+
+(final_bind <- S_var9%>% arrange(var))
 
 final_bind$site <- factor(final_bind$site, ordered = T,levels = c("NFA","RUB","MFA", "NFY","MFY","SFY"))
 levels(final_bind$site)
 
-final_bind %>% filter(!site=="MFY") %>% filter(var=="lev_avg" | var=="flow_cfs") %>% 
+final_bind %>% filter(!site=="MFY") %>% filter(var=="lev_avg" | var=="Q_cfs" | var=="Q_CV" |var=="deltQ") %>% 
   ggplot(.) + 
-  geom_bar(aes(x=site, y=MP_metric), fill=c(rep("#31688EFF",5), rep("#35B779FF",5)), stat="identity", show.legend = F) + theme_bw() + #scale_fill_viridis(discrete = T)+
+  geom_bar(aes(x=site, y=MP_metric, fill=var), stat="identity", show.legend = F) + theme_bw() + #scale_fill_viridis(discrete = T)+
   geom_hline(yintercept = 0.75, color="#440154FF", lty=2, alpha=0.9, lwd=0.9) + #coord_flip() + facet_grid(.~var)
   facet_grid(var~.) 
 
 save(final_bind, file = "models/colwell_variables.rda")
+
+rm(list = ls(pattern = "S_var*"))
+rm(list = ls(pattern = ".c$"))
+rm(mfa, mfy, nfa, nfy, rub, sfy)
 
 # WAVELET ANALYSIS --------------------------------------------------------
 
@@ -473,19 +543,16 @@ ggplot() +
 
 # PCA ---------------------------------------------------------------------
 
-# get only the breeding points
-master_breed <- filter(df, !is.na(df$missData)) %>% 
-  select(-WY, -WYsum, -DOY, -DOWY, -station, -missData, -REG, -obs_strt, -CDEC_air_C, -CDEC_air_7_avg, -CDEC_air_30_avg, -totalEM) %>% as.data.frame
-
 # 2 NAs in dataset from 30 day avgs
-master_breed[master_breed$site=="RUB" & master_breed$date==ymd("2011-05-26"),]$temp_30_max<-10.99
-master_breed[master_breed$site=="RUB" & master_breed$date==ymd("2011-05-26"),]$temp_30_min<-9.7
+df[!is.na(df$missData) & df$site=="RUB" & df$date==ymd("2011-05-26"),]$temp_30_max<-10.99
+df[!is.na(df$missData) & df$site=="RUB" & df$date==ymd("2011-05-26"),]$temp_30_min<-9.7
 
-# remove as much datetime information (DOWY, days without ppt, etc)
-master_breed <- master_breed %>% select(-site, -date, -W_humidity_avg)
+# get only the breeding points drop redundant types
+master_breed <- filter(df, !is.na(df$missData)) %>% 
+  select(-WYsum, -DOY, -DOWY, -station, -missData, -obs_strt, -CDEC_air_C, -CDEC_air_7_avg, -CDEC_air_30_avg, -totalEM) %>% as.data.frame
 
 # PCA
-prin_comp <- prcomp(master_breed, scale. = T)
+prin_comp <- master_breed %>% select(-site, -date, -WY, -REG) %>% prcomp(., center = T, scale. = T)
 prin_comp$center
 
 # rotation: The rotation measure provides the principal component loading. Each column of rotation matrix contains the principal component loading vector. This is the most important measure we should be interested in
@@ -509,13 +576,24 @@ prin_comp$rotation[,1:3] %>% as.data.frame %>%
   mutate(vars = row.names(prin_comp$rotation)) %>% 
   select(vars, PC3) %>% arrange(PC3)
 
+# plot
+prin_comp %>% plot
+
+# predict to existing data
+mapped_breed <- prin_comp %>% predict(master_breed)
+mapped_breed %>% head
+
+# GGPLOT
+mapped_breed %>%
+  as.data.frame %>%
+  cbind(site = master_breed$site,
+        REG = master_breed$REG) %>%
+  ggplot() +
+  geom_point(aes(x = PC4, y = PC5, fill = REG), pch=21, size=4)
 
 # plot
 biplot(prin_comp, choices = 1:2, scale = 0, pc.biplot = F, 
        xlabs=rep(".", nrow(master_breed)), col="blue")
-
-biplot(prin_comp, choices = 2:3, scale = 0, pc.biplot = F, xlabs=rep(".", nrow(master_breed)), 
-       col="black")
 
 # a quad plot of results
 
@@ -537,6 +615,43 @@ pcaCharts <- function(x) {
 # plot
 pcaCharts(prin_comp)
 
+# plot first 5 prcomp
+pc <- master_breed %>% select(-site, -date, -REG) %>% prcomp
+comp <- data.frame(pc$x[,1:5])
+row.names(comp) <- paste0(master_breed$site, "_", row.names(master_breed))
+
+plot(comp, pch=16, col=rgb(0,0,0,0.5))
+
+
+# K MEANS -----------------------------------------------------------------
+dat1 <- master_breed %>% select(-site, -date, -REG, -WY)
+row.names(dat1) <- paste0(master_breed$site, "_", row.names(master_breed))
+
+wss <- (nrow(dat1)-1)*sum(apply(dat1,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(dat1,
+                                     centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+     ylab="Within groups sum of squares")
+
+k <- kmeans(comp, 4, nstart=25, iter.max=1000)
+library(RColorBrewer)
+library(scales)
+palette(alpha(brewer.pal(9,'Set1'), 0.5))
+plot(comp, col=k$clust, pch=16)
+
+# Cluster sizes
+sort(table(k$clust))
+clust <- names(sort(table(k$clust)))
+clust
+# First cluster
+row.names(dat1[k$clust==clust[1],])
+# Second Cluster
+row.names(dat1[k$clust==clust[2],])
+# Third Cluster
+row.names(dat1[k$clust==clust[3],])
+# Fourth Cluster
+row.names(dat1[k$clust==clust[4],])
+
 
 # PLOTTING PCA ------------------------------------------------------------
 
@@ -546,7 +661,7 @@ library(ggbiplot)
 
 g <- ggbiplot(prin_comp, obs.scale = 1, var.scale = 1,
               ellipse = TRUE, 
-              circle = TRUE, )
+              circle = TRUE)
 g <- g + scale_color_discrete(name = '')
 g <- g + theme(legend.direction = 'horizontal', 
                legend.position = 'top')
@@ -556,7 +671,7 @@ ggsave("figs/biplot_pca_v2.png", width = 7, height = 6, units="in")
 
 
 # now switch off scaling factors (var.scale)
-g <- ggbiplot(prin_comp, choices = 1:2, scale = 0, var.scale = 0, labels= prin_comp$site, groups = prin_comp$site,
+g <- ggbiplot(prin_comp, choices = 2:3, scale = 0, var.scale = 0, labels= prin_comp$site, groups = prin_comp$site,
               ellipse = TRUE, 
               circle = TRUE)
 g <- g + scale_color_discrete(name = '')
