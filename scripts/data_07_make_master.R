@@ -199,7 +199,7 @@ master_df <- inner_join(master_dat2, wys, by="WY")
 
 # JOIN FLOW DATA (DAILY) --------------------------------------------------
 
-load("data/master_dat_2011-2016.rda")
+#load("data/master_dat_2011-2016.rda")
 
 # need to filter to just the data matching frog surveys >2010
 flow_dv <- filter(flow_dv, WY>2010)
@@ -208,6 +208,18 @@ master_df <- select(master_df, -WY, -DOWY, -DOY)
 
 # join with WY index data
 masters_df <- right_join(master_df, flow_dv, by=c("site", "date"))
+
+
+# ADD SITE LENGTHS --------------------------------------------------------
+
+# site lengths for EM/km adj
+sites<- tibble("site"=c("RUB","NFA"," NFA-RR", "MFA","MFA-AMC", "SFY", "NFY", "MFY"), "len_km"=c(0.5, 0.57, 0.11, 0.5, 0.2, 0.5, 0.8, 0.8))
+
+# join site-lengths w master 
+master_df <- master_df %>%
+  left_join(., sites, by="site") %>%
+  mutate(EM_per_km=totalEM/len_km)
+
 
 # TEST MASTER DAT PLOTS ---------------------------------------------------
 
@@ -275,7 +287,6 @@ ggplot() +
 master_df <- masters_df
 
 # CLEAN -------------------------------------------------------------------
-
 
 # clean workspace
 rm(master_dat1, master_dat2, frogBreed, wys, cdec)
