@@ -25,10 +25,11 @@ library(lubridate)
 load("data/master_dat_2011-2016.rda") 
 load("data/flow_dv_cfs_2011_6sites.rda") # updated and merged flows:
 
-#df <- master_df
+df <- master_df
 # df <- master_df %>% filter(site!="MFY")
-df <- master_df %>% filter(month(date)>3 & month(date)<8 & !site=="MFA")
-#df <- master_df %>% filter(month(date)>3 & month(date)<8 & site=="NFA" | site=="NFY")
+# df <- master_df %>% filter(month(date)>2 & month(date)<8 & !site=="MFA")
+# df <- master_df %>% filter(month(date)>3 & month(date)<8 & site=="NFA" | site=="NFY")
+
 
 # 2 NAs in dataset from 30 day avgs
 df[!is.na(df$missData) & df$site=="RUB" & df$date==ymd("2011-05-26"),]$temp_30_max<-10.99
@@ -36,19 +37,40 @@ df[!is.na(df$missData) & df$site=="RUB" & df$date==ymd("2011-05-26"),]$temp_30_m
 
 rabo <- df[!is.na(df$missData),] %>% arrange(date)
 
-# refactor the sites to drop unused factors
-rabo$site <- factor(rabo$site)
-
 # add unique rownames based on siteID
 rabo <- rabo %>%
   mutate("siteID" = paste0(site, "-", row.names(.))) %>% 
   column_to_rownames(var = "siteID")  %>% as.data.frame
-names(rabo)
-rownames(rabo)
+#names(rabo)
+#rownames(rabo)
 
-d <- rabo %>% dplyr::select(-(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), -station, -WY, -DOY)
+# create column with date for 15 and 30 day lags (for binomial logistic)
+rabo_lag <- rabo %>% 
+  mutate(d7 = date - 7, 
+         d14 = date - 14,
+         d21 = date - 21,
+         d30 = date - 30) %>% 
+  select(site, date, WY, d7:d30)
 
-names(d)
+# rejoin / filter form orig dataset
+
+rabo_bin7<- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d7")) %>% select(-c(date.y, d14:d30)) %>% mutate(lagEM="d7")
+rabo_bin14 <- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d14")) %>% select(-c(date.y, d7:d30)) %>% mutate(lagEM="d14")
+rabo_bin21 <- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d21")) %>% select(-c(date.y, d7:d30)) %>% mutate(lagEM="d21")
+rabo_bin30 <- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d30")) %>% select(-c(date.y, d7:d21)) %>% mutate(lagEM="d30")
+
+# bind up for one dataset of lags, add 1/0 col for breeding
+rabo_LAGS<-rbind(rabo_bin7, rabo_bin14, rabo_bin21, rabo_bin30) %>% 
+  mutate(breed = 0)
+rm(list=ls(pattern = "rabo_bin*"))
+
+# add breed col to orig dataset:
+rabo <- rabo %>% mutate(breed = 1, lagEM="d0")
+# make final logistic dataset, add 1/0 column
+rabo_logist <- rbind(rabo_LAGS, rabo)
+
+#d <- rabo %>% dplyr::select(-(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), -station, -WY, -DOY)
+#names(d)
 
 ```
 
@@ -58,9 +80,78 @@ names(d)
 ```{r varying effects, eval=F, echo=T}
 library(rethinking)
 
-# fix index
-d$river <- as.integer(as.factor(d$site))
+# Only UNREG
+d.1 <- dplyr::select(rabo_logist, DOWY, everything(), -date, -EM_per_km, -REG,
+                     -(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), 
+                     -station, -DOY, -WYsum, -lev_7_avg, -Q_cfs, 
+                     -Q_min, -Q_7_cfs) %>% 
+  filter(site=="NFY" | site=="NFA") %>% select(-lagEM) %>% 
+  as.data.frame
 
+# RM NAs, add id and site to rownames:
+d.1 <- d.1 %>% filter(!is.na(temp_30_min))
+d.1_rownames<- paste0(d.1$site, "-",d.1$WY, "-", seq(1:nrow(d.1)))
+d.1 <- select(d.1, -site, -WY)
+
+# an intercept only model of breeding
+m10.1 <- map(
+    alist(
+        breed ~ dbinom( 1 , p ) ,
+        logit(p) <- a ,
+        a ~ dnorm(0,10)
+),
+    data=d.1 )
+
+precis(m10.1)
+logistic(c(-1.86, -1.34, -0.82)) # about a 20% chance of breeding based on these data
+
+# scale the data
+d.1s<-scale(d.1[,c(1:26)]) %>% as.data.frame() %>%  mutate(breed=d.1$breed)
+
+# now add other stuff
+m10.2 <- map(
+    alist(
+      breed ~ dbinom( 1 , p ) ,
+      logit(p) <- a + bt7*temp_7_avg + bwyi*Index + 
+        bdeltLev*deltLev + bQCV*Q_CV + bdeltQ*deltQ + 
+        btCV*temp_CV + bppt*W_humidity_avg ,
+      a ~ dnorm(0,5) ,
+      c(bt7, bwyi, bdeltLev, bQCV, bdeltQ, 
+        btCV, bppt) ~ dnorm(0,5)
+      ),
+    data=d.1s)
+
+precis(m10.2)
+logistic(c(1.63, 0.96,-.94, -1.01, 0.80)) # about a 20% chance of breeding based 
+
+m10.2stan <- map2stan( m10.2 , data=d.1s , iter=1e4 , warmup=1000 )
+precis(m10.2stan)
+plot(m10.2stan)
+plot(precis(m10.2stan))
+
+
+# now add other stuff
+m10.3 <- map(
+    alist(
+      breed ~ dbinom( 1 , p ) ,
+      logit(p) <- a + bt7*temp_7_avg + bwyi*Index + 
+        bdeltLev*deltLev + bQCV*Q_CV + bdeltQ*deltQ + 
+        btCV*temp_CV + bppt*W_humidity_avg + bDOWY*DOWY,
+      a ~ dnorm(0,5) ,
+      c(bt7, bwyi, bdeltLev, bQCV, bdeltQ, 
+        btCV, bppt, bDOWY) ~ dnorm(0,5)
+      ),
+    data=d.1s)
+
+precis(m10.3)
+plot(precis(m10.3))
+compare(m10.2, m10.3)
+
+exp(1.26)
+
+
+
+#########
 # from Jacob 05/17/17
 mz43 <- map2stan(
   alist(
@@ -87,57 +178,65 @@ mz43 <- map2stan(
 library(glmnet)
 
 # Only UNREG
-d.1 <- dplyr::select(d, DOWY, everything(), -date, -EM_per_km, -REG) %>% 
+d.1 <- dplyr::select(rabo_logist, DOWY, everything(), -date, -EM_per_km, -REG,
+                     -(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), 
+                     -station, -DOY, -WYsum, -lev_7_avg, -Q_cfs, 
+                     -Q_min, -Q_7_cfs) %>% 
   filter(site=="NFY" | site=="NFA") %>% 
   as.data.frame
 
-# add id and site to rownames:
-row.names(d.1) <- paste0(d.1$site, "-", row.names(d.1))
-d.1 <- select(d.1, -site)
-#d.1$site <- as.integer(as.factor(d.1$site))
+# RM NAs, add id and site to rownames:
+d.1 <- d.1 %>% filter(!is.na(temp_30_min))
+d.1_rownames<- paste0(d.1$site, "-",d.1$WY, "-", seq(1:nrow(d.1)))
+d.1 <- select(d.1, -site, -WY)
+d.1$breed <-as.factor(d.1$breed)
+d.1$lagEM <- as.factor(d.1$lagEM)
 
-x <- model.matrix(DOWY~., data=d.1)
-x <- x[,-1]
+# make the model matrix for binomial
+x <- model.matrix(breed~., data=d.1)
+x <- x[,-1] # remove the response var column
 
-fit = glmnet(x=x, y=d.1$DOWY)
+# model matrix for gaussian
+xG<- d.1 %>% filter(lagEM=="d0") %>% select(-breed, -lagEM)
+x2 <- model.matrix(DOWY~., data=xG)
+x2 <- x2[,-1] # remove the response var column
+
+# MODEL: BINOMIAL
+fit = glmnet(x=x, y=d.1$breed, family = "binomial")
 plot(fit, label=T)
 print(fit)
-coef(fit,s=0.1)
+coef(fit,s=0.05)
 
-nx = matrix(rnorm(12*30),12,30)
-predict(fit,newx=nx,s=c(0.1,0.05))
+# MODEL: GAUSSIAN
+fit2 = glmnet(x=x2, y=xG$DOWY)
+plot(fit2, label=T)
+print(fit2)
+coef(fit2,s=0.05)
 
-cvfit <- cv.glmnet(x=x, y=d.1$DOWY)
+# create matrix for prediction (rows, cols)
+nx = matrix(rnorm(nrow(x2)*ncol(x2)),nrow(x2),ncol(x2))
+predict(fit2,newx=nx,s=c(0.1,0.05)) # new predictions
+
+# cross validated vs. breed
+cvfit <- cv.glmnet(x=x2, y=xG$DOWY)
 plot(cvfit)
 cvfit$lambda.min
+coef(cvfit, s=0.05)
+coef(cvfit, s="lambda.min")
+
 ```
 
 lamda.min is the value of λλ that gives minimum mean cross-validated error. The other λλ saved is lambda.1se, which gives the most regularized model such that error is within one standard error of the minimum. To use that, we only need to replace lambda.min with lambda.1se above
 
 ```{r}
 
-coef(cvfit, s = "lambda.min")
+newMod <-predict(cvfit, newx = x2, s = "lambda.min") %>% data.frame()
+colnames(newMod)<-"predictions"
+newMod$siteID<- d.1_rownames[1:12]
 
-predict(cvfit, newx = x, s = "lambda.min")
+ggplot(newMod) + geom_point(aes(x=siteID, y=predictions), pch=16) +
+  coord_flip() + ylab("Prob of Breeding") + xlab("")
 
-
-```
-
-Results as:
-
-```
-NFA-1  271.6041
-NFY-2  273.1697
-NFA-3  230.2935
-NFY-4  233.4648
-NFA-5  223.4183
-NFY-6  224.8586
-NFA-7  219.2167
-NFY-8  219.7139
-NFA-9  214.2525
-NFY-10 216.5532
-NFA-11 237.7204
-NFY-12 238.7343
 ```
 
 
@@ -147,31 +246,43 @@ Now let's run a model. See [here](http://stats.idre.ucla.edu/r/dae/logit-regress
 
 ```{r model}
 
+# Only UNREG
+xG<- d.1 %>% filter(lagEM=="d0") %>% select(-breed, -lagEM)
+
 # All sites
-d.2 <- dplyr::select(d, DOWY, everything(), -date, -Index, -WYsum, -EM_per_km) %>%
+d.2 <- dplyr::select(rabo_logist, DOWY, everything(), -date, -Index, -WYsum,
+                     -EM_per_km, -station, -(obs_strt:apr_jul), 
+                     -len_km, -starts_with("CDEC"), -DOY, -WYsum,
+                     -Q_min, -Q_7_cfs, -lev_7_avg) %>%
   as.data.frame
 
 # fix index
+#d.2$breed <-as.integer(as.factor(d.2$breed))
+d.2$lagEM <- as.integer(as.factor(d.2$lagEM))
 d.2$site <- as.integer(as.factor(d.2$site))
 d.2$REG <- as.integer(as.factor(d.2$REG))
+
+# scaled
 d.2.s<-scale(d.2) %>% as.data.frame
 
-# run a logistic binomial response model (unscaled)
-mylogit2 <- glm(DOWY ~ deltQ + Q_CV + Q_7_CV +
-                 W_air_7_avg + W_air_30_max + W_humidity_avg +
-                 temp_7_avg + temp_7_max + temp_30_min + temp_30_max +
-                 temp_CV + lev_CV + lev_avg + deltLev +
-                 days_no_ppt, data = d.2, family = "gaussian")
-summary(mylogit2)
+
+# run a gaussian response model (unscaled)
+mod.gauss <- glm(DOWY ~ deltQ + Q_CV + Q_7_CV +
+                   W_air_7_avg + W_air_30_max + W_humidity_avg +
+                   temp_7_avg + temp_7_max + temp_30_min + temp_30_max +
+                   temp_CV + lev_CV + deltLev + Index +
+                   days_no_ppt, data = xG, family = "gaussian")
+summary(mod.gauss)
+anova(mod.gauss)
 
 # run a logistic binomial response model (unscaled)
-mylogit2.s <- glm(DOWY ~ deltQ + Q_CV + Q_7_CV +
+mod.logit <- glm(breed ~ deltQ + Q_CV + Q_7_CV +
                  W_air_7_avg + W_air_30_max + W_humidity_avg +
                  temp_7_avg + temp_7_max + temp_30_min + temp_30_max +
-                 temp_CV + lev_CV + lev_avg + deltLev +
-                 days_no_ppt, data = d.2.s, family = "gaussian")
-summary(mylogit2.s)
-
+                 temp_CV + lev_CV + deltLev +
+                 days_no_ppt + site, data = d.2, family = "binomial")
+summary(mod.logit)
+anova(mod.logit)
 ```
 
 So **Deviance residuals** are a measure of model fit, and `AIC = 178.8`. For every one unit change in **`temp_7_max`** there is a log-odds of oviposition timing (breeding) increase of 20.2224, whereas a change in the stage (`lev_CV`) yields a strong negative change in the log odds of oviposition by -2.09
@@ -179,15 +290,7 @@ So **Deviance residuals** are a measure of model fit, and `AIC = 178.8`. For eve
 You can calculate the confidence intervals using the `confint` function.
 
 ```{r}
-confint(mylogit2.s)
-
-library(aod)
-# Can use a wald.test to test coefficients in order they appear in model
-aod::wald.test(b= coef(mylogit2), Sigma = vcov(mylogit2), Terms=c(1,2))
-aod::wald.test(b= coef(mylogit2), Sigma = vcov(mylogit2), Terms=c(1,13))
-
-## odds ratios and 95% CI
-exp(cbind(OR = coef(mylogit2), confint(mylogit2)))
+confint(mod.logit)
 
 ```
 
@@ -207,4 +310,94 @@ newdata1
 ggplot() + geom_point(data=newdata1, aes(x=DOY, y=rankP, color=as.factor(river_id), shape=as.factor(WY_id)), size=3)
 ```
 
+
+
+
+## BRT
+
+```{r brt}
+library(gbm)
+library(dismo)
+library(ggplot2)
+library(viridis)
+
+set.seed(33)
+
+# gbm First Model -----
+d.1brt <- dplyr::select(rabo_logist, DOWY, everything(), 
+                     -date, -EM_per_km, -REG,
+                     -(obs_strt:apr_jul), -len_km,
+                     -starts_with("CDEC"), 
+                     #-starts_with("W_"), 
+                     -station, -DOY, -WYsum, 
+                     -lev_7_avg, -Q_cfs, 
+                     -Q_min, -Q_max, -Q_7_cfs) %>% 
+  filter(site=="NFY" | site=="NFA") %>% 
+  filter(!is.na(temp_30_min)) %>% 
+  dplyr::select(breed, everything(), -Index, -lev_avg, -DOWY) %>%
+  as.data.frame()
+d.1brt$site <- as.factor(d.1brt$site)
+d.1brt$lagEM <- as.factor(d.1brt$site)
+
+gbm3s <- gbm.step(data = d.1brt,
+                     gbm.x = 2:26,    
+                     gbm.y = 1,
+                     family = "bernoulli",  
+                     tree.complexity = 2,   
+                     learning.rate = 0.001, 
+                     bag.fraction = 0.75,   
+                     n.folds = 5,      
+                     plot.main=T,
+                     verbose=T) 
+
+paste0("mean estimated deviance from CV: ", round(gbm3s$cv.statistics$deviance.mean,3))
+paste0("SE estimated deviance from CV: ", round(gbm3s$cv.statistics$deviance.se,3))
+
+# gbm simplify barplot ----
+
+par(mar=c(5,12,3,3))
+barplot(rev(summary(gbm3s, plotit=FALSE)$rel.inf), 
+        horiz = TRUE, col = viridis(length(gbm3s$var.names)), 
+        names = rev(summary(gbm3s, plotit=FALSE)$var), 
+        xlab = "Relative influence",
+        las=1, 
+        main="Relative Influence")
+
+topVars<-summary(gbm3s, plot=F) %>% as.tibble %>% filter(rel.inf>4)
+topVars
+
+
+## Another BRT but simplified
+names(d.1brt)
+topVars$var <- factor(topVars$var)
+d.1simp <- dplyr::select(d.1brt, breed, site, deltQ, W_air_30_max,
+                         temp_30_min, temp_7_max, deltLev,
+                         W_humidity_avg, lev_CV)
+
+gbm3s <- gbm.step(data = d.1simp,
+                     gbm.x = 2:9,    
+                     gbm.y = 1,
+                     family = "bernoulli",  
+                     tree.complexity = 2,   
+                     learning.rate = 0.001, 
+                     bag.fraction = 0.75,   
+                     n.folds = 5,      
+                     plot.main=T,
+                     verbose=T) 
+
+paste0("mean estimated deviance from CV: ", round(gbm3s$cv.statistics$deviance.mean,3))
+paste0("se estimated deviance from CV: ", round(gbm3s$cv.statistics$deviance.se,3))
+
+# gbm simplify barplot ----
+
+par(mar=c(5,12,3,3))
+barplot(rev(summary(gbm3s, plotit=FALSE)$rel.inf), 
+        horiz = TRUE, col = viridis(length(gbm3s$var.names)), 
+        names = rev(summary(gbm3s, plotit=FALSE)$var), 
+        xlab = "Relative influence",
+        las=1, 
+        main="Relative Influence")
+
+summary(gbm3s, plot=F)
+```
 
