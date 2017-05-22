@@ -19,6 +19,7 @@ First let's take a look at some test data. Using a subset (say just pull the **N
 ### Get the Data & Tidy
 
 ```{r get and tidy data}
+
 library(tidyverse)
 library(lubridate)
 
@@ -46,18 +47,18 @@ rabo <- rabo %>%
 
 # create column with date for 15 and 30 day lags (for binomial logistic)
 rabo_lag <- rabo %>% 
-  mutate(d7 = date - 7, 
+  mutate(d07 = date - 7, 
          d14 = date - 14,
          d21 = date - 21,
          d30 = date - 30) %>% 
-  select(site, date, WY, d7:d30)
+  select(site, date, WY, d07:d30)
 
 # rejoin / filter form orig dataset
 
-rabo_bin7<- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d7")) %>% select(-c(date.y, d14:d30)) %>% mutate(lagEM="d7")
-rabo_bin14 <- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d14")) %>% select(-c(date.y, d7:d30)) %>% mutate(lagEM="d14")
-rabo_bin21 <- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d21")) %>% select(-c(date.y, d7:d30)) %>% mutate(lagEM="d21")
-rabo_bin30 <- inner_join(master_df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d30")) %>% select(-c(date.y, d7:d21)) %>% mutate(lagEM="d30")
+rabo_bin7<- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d07")) %>% select(-c(date.y, d14:d30)) %>% mutate(lagEM="d07")
+rabo_bin14 <- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d14")) %>% select(-c(date.y, d07:d30)) %>% mutate(lagEM="d14")
+rabo_bin21 <- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d21")) %>% select(-c(date.y, d07:d30)) %>% mutate(lagEM="d21")
+rabo_bin30 <- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d30")) %>% select(-c(date.y, d07:d21)) %>% mutate(lagEM="d30")
 
 # bind up for one dataset of lags, add 1/0 col for breeding
 rabo_LAGS<-rbind(rabo_bin7, rabo_bin14, rabo_bin21, rabo_bin30) %>% 
@@ -65,61 +66,195 @@ rabo_LAGS<-rbind(rabo_bin7, rabo_bin14, rabo_bin21, rabo_bin30) %>%
 rm(list=ls(pattern = "rabo_bin*"))
 
 # add breed col to orig dataset:
-rabo <- rabo %>% mutate(breed = 1, lagEM="d0")
+rabo <- rabo %>% mutate(breed = 1, lagEM="d00")
+
 # make final logistic dataset, add 1/0 column
 rabo_logist <- rbind(rabo_LAGS, rabo)
-
-#d <- rabo %>% dplyr::select(-(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), -station, -WY, -DOY)
-#names(d)
 
 ```
 
 
-## Rethinking Model
+## Rethinking Models
 
-```{r varying effects, eval=F, echo=T}
+Prepare data by removing much of the information that will be unused, and converting and scaling the data as needed.
+
+
+```{r prepData, eval=T, echo=T}
 library(rethinking)
 
-# Only UNREG
-d.1 <- dplyr::select(rabo_logist, DOWY, everything(), -date, -EM_per_km, -REG,
+# Filter down data, use only unreg sites
+d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(), -date, -EM_per_km, -REG,
                      -(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), 
-                     -station, -DOY, -WYsum, -lev_7_avg, -Q_cfs, 
+                     -station, -WYsum, -lev_7_avg, -Q_cfs, 
                      -Q_min, -Q_7_cfs) %>% 
-  filter(site=="NFY" | site=="NFA") %>% select(-lagEM) %>% 
+    filter(!site=="MFA") %>% 
+#    filter(site=="NFY" | site=="NFA") %>%
   as.data.frame
 
 # RM NAs, add id and site to rownames:
-d.1 <- d.1 %>% filter(!is.na(temp_30_min))
-d.1_rownames<- paste0(d.1$site, "-",d.1$WY, "-", seq(1:nrow(d.1)))
-d.1 <- select(d.1, -site, -WY)
+d1 <- d1 %>% filter(!is.na(temp_30_min))
+d1_rownames<- paste0(d1$site, "-",d1$WY, "-", seq(1:nrow(d1)))
+d1$site <- as.factor(d1$site)
+d1$lagEM <- as.integer(as.factor(d1$lagEM))
+
+# custom scale function
+cusScale <- function(x){
+  (x - mean(x))/sd(x)
+}
+
+# scale all data and rebind site and breed info:
+d1s <- d1
+d1s[,c(4:31)] <- apply(d1[,c(4:31)], 2, cusScale)
+d1s$site <- as.integer(d1s$site)
+
+d1s <- d1s %>% rename(river=site, wyind=Index)
+
+
+```
+
+Intercept only model
+
+```{r dbinom_intercept, eval=F, echo=T}
+
+# based on m10.1
 
 # an intercept only model of breeding
-m10.1 <- map(
+m1.1 <- map(
     alist(
         breed ~ dbinom( 1 , p ) ,
         logit(p) <- a ,
         a ~ dnorm(0,10)
 ),
-    data=d.1 )
+    data=d1s )
+precis(m1.1)
+logistic(c(-1.56, -1.19, -0.82)) # about a 23% chance of breeding based on these data
+```
 
-precis(m10.1)
-logistic(c(-1.86, -1.34, -0.82)) # about a 20% chance of breeding based on these data
+#### Start Simple: temp only no varying intercept
 
-# scale the data
-d.1s<-scale(d.1[,c(1:26)]) %>% as.data.frame() %>%  mutate(breed=d.1$breed)
+```{r temp_only}
+
+# just temperature
+m1.1a <- map2stan(
+    alist(
+        breed ~ dbinom( 1 , p ) ,
+        logit(p) <- a + bt7mx*temp_7_max + bt7mn*temp_7_min + bt30mx*temp_30_max + bt30mn*temp_30_min,
+        a ~ dnorm(0,1),
+        c(bt7mx, bt7mn, bt30mx, bt30mn) ~ dnorm(0,1)
+    ), data=d1s, warmup=1000, iter=5000, chains=4, cores=2)
+
+precis(m1.1a, corr = T)
+logistic(c(-1.41, -0.28, .64, 0.57, 0.30)) # about a 23% chance of breeding based on these data
+plot(precis(m1.1a))
+
+# show density of probabilities
+post <- extract.samples(m1.1a)
+dens( post$bt7mx , xlab="Prob", ylim=c(0,1.5))
+dens( post$bt30mx, col=rangi2 , lwd=2 , add=TRUE )
+dens( post$bt7mn , col="red", add=TRUE)
+dens( post$bt30mn, col="maroon", lwd=2 , add=TRUE )
+text( 0.4 , 1 , "30dmx" , col=rangi2 )
+text( 0.85 , 1 , "7dmx" )
+
+
+# now just 7day
+m1.1b <- map2stan(
+    alist(
+        breed ~ dbinom( 1 , p ) ,
+        logit(p) <- a + bt7mx*temp_7_max + bt7av*temp_7_avg + btCV*temp_CV ,
+        a ~ dnorm(0,1),
+        c(bt7mx, bt7av, btCV) ~ dnorm(0,1)
+    ), data=d1s, warmup=1000, iter=5000, chains=4, cores=2)
+
+plot(m1.1b)
+precis(m1.1b)
+
+# show density of probabilities
+post1b <- extract.samples(m1.1b)
+dens( post1b$bt7mx , ylim=c(0,1.5), xlim=c(-1.4,3.4))
+dens( post1b$bt7av, col=rangi2 , lwd=2 , add=TRUE )
+dens( post1b$btCV , col="red", add=TRUE)
+
+plot(precis(m1.1b))
+
+# now add interaction
+m1.1c <- map2stan(
+    alist(
+        breed ~ dbinom( 1 , p ) ,
+        logit(p) <- a + bt7mx*temp_7_max + btCV*temp_CV + bppt*days_no_ppt ,
+        a ~ dnorm(0,1),
+        c(bt7mx, btCV, bppt) ~ dnorm(0,1)
+    ), data=d1s, warmup=1000, iter=5000, chains=4, cores=2)
+
+plot(m1.1c)
+precis(m1.1c)
+plot(precis(m1.1c))
+
+# show density of probabilities
+post1c <- extract.samples(m1.1c)
+dens( post1c$bt7mx , ylim=c(0,1.7), xlim=c(-1,2.4))
+dens( post1c$btCV, col=rangi2 , lwd=2 , add=TRUE )
+dens( post1c$bppt , col="red", add=TRUE)
+
+
+compare(m1.1a, m1.1b, m1.1c)
+```
+
+### Varying Intercept
+
+```{r temp varying intercept}
+
+names(d1s)
+s(d1s)
+d1sA <- d1s %>% select(breed, river, temp_7_max, wyind)
+d1sA$breed<- as.integer(d1sA$breed)
+str(d1sA)
+
+# now just 7day
+m2.1a <- map2stan(
+    alist(
+        breed ~ dbinom( 1 , theta ) ,
+        logit(theta) <- a + a_river[river] + bt7mx*temp_7_max + bwyind*wyind,
+        a_river[river] ~ dnorm( 0, sigma_river ),
+        c(a,bt7mx,bwyind) ~ dnorm(0,10),
+        sigma_river ~ dcauchy(0,1)
+    ), 
+    data=d1sA, warmup=1000, iter=5000, chains=4, cores=2)
+
+# view output
+plot(m2.1a)
+precis(m2.1a)
+plot(precis(m2.1a, depth=2))
+
+# show density of probabilities
+post2a <- extract.samples(m2.1a)
+dens( post2a$bt7mx , ylim=c(0,1.7), xlim=c(-1,2.4))
+dens( post2a$bwyind, col=rangi2 , lwd=2 , add=TRUE )
+dens( post2a$sigma_river , col="red", add=TRUE)
+```
+
+
+Now add other variables into the model, with partial pooling (but no interactions):
+
+```{r dbinom_fixed, eval=F, echo=T}
+
+d1.2 <- select(d1s, breed, site, lagEM, temp_7_max, Index, deltLev, Q_CV, deltQ,
+               temp_CV, DOY, W_air_7_avg) %>% rename(wy_index=Index)
+
+#bdeltLev*deltLev + bQCV*Q_CV + bdeltQ*deltQ + btCV*temp_CV +bDOY*DOY + bAir7*W_air_7_avg,
+#      c(bLAG, bt7, bwyi, bdeltLev, bQCV, bdeltQ, btCV, bDOY, bAir7) ~ dnorm(0,5)
 
 # now add other stuff
-m10.2 <- map(
+m1.2 <- map2stan(
     alist(
       breed ~ dbinom( 1 , p ) ,
-      logit(p) <- a + bt7*temp_7_avg + bwyi*Index + 
-        bdeltLev*deltLev + bQCV*Q_CV + bdeltQ*deltQ + 
-        btCV*temp_CV + bppt*W_humidity_avg ,
-      a ~ dnorm(0,5) ,
-      c(bt7, bwyi, bdeltLev, bQCV, bdeltQ, 
-        btCV, bppt) ~ dnorm(0,5)
-      ),
-    data=d.1s)
+      logit(p) <- a + a_site[site] + bLAG*lagEM + bt7mx*temp_7_max + bwyi*wy_index + 
+      a ~ dnorm(0,5),
+      a_site[site] ~ dnorm(0, sigma_site),
+      sigma_site ~ dcauchy(0,1),
+      c(bLAG, bt7, bwyi) ~ dnorm(0,5)
+    ),
+    data=d1.2)
 
 precis(m10.2)
 logistic(c(1.63, 0.96,-.94, -1.01, 0.80)) # about a 20% chance of breeding based 
@@ -128,26 +263,6 @@ m10.2stan <- map2stan( m10.2 , data=d.1s , iter=1e4 , warmup=1000 )
 precis(m10.2stan)
 plot(m10.2stan)
 plot(precis(m10.2stan))
-
-
-# now add other stuff
-m10.3 <- map(
-    alist(
-      breed ~ dbinom( 1 , p ) ,
-      logit(p) <- a + bt7*temp_7_avg + bwyi*Index + 
-        bdeltLev*deltLev + bQCV*Q_CV + bdeltQ*deltQ + 
-        btCV*temp_CV + bppt*W_humidity_avg + bDOWY*DOWY,
-      a ~ dnorm(0,5) ,
-      c(bt7, bwyi, bdeltLev, bQCV, bdeltQ, 
-        btCV, bppt, bDOWY) ~ dnorm(0,5)
-      ),
-    data=d.1s)
-
-precis(m10.3)
-plot(precis(m10.3))
-compare(m10.2, m10.3)
-
-exp(1.26)
 
 
 
@@ -170,6 +285,32 @@ mz43 <- map2stan(
 
 ```
 
+
+### Geometric Distribution
+
+The geometric distribution might make some sense (Ch 10, pg 328), as it describes the number of events up until something happens (such as an event, like the start of breeding). If we want to know the probability of that event (often called *Event History Analysis* or *Survival Analysis*), we can use the `dgeom` distribution in R for our common likelihood function. 
+
+The only caveat is that we need to **assume** the probability of the terminating event is constant through time (or distance), and the units of time (or distance) are discrete.
+
+```{r geometric distrib}
+# simulate
+N <- 100
+x <- runif(N)
+y <- rgeom( N , prob=logistic( -1 + 2*x ) )
+
+# estimate
+m10.18 <- map(
+    alist(
+        y ~ dgeom( p ),
+        logit(p) <- a + b*x,
+        a ~ dnorm(0,10),
+        b ~ dnorm(0,1)
+),
+    data=list(y=y,x=x) )
+precis(m10.18)
+plot(precis(m10.18))
+
+```
 
 ## LASSO glm 
 
