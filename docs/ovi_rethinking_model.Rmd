@@ -10,15 +10,25 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = normalizePath("../"))
 ```
 
+# What Permits Plasticity in Breeding Timing in River Frogs?
+
+How might varying environmental conditions provide cues for breeding timing from year to year? For frogs that have an amazing plasticity in breeding oviposition timing (inital deposition of eggs) such as *Rana boylii*, there must be certain thresholds that exist (a cutoff which makes oviposition not possible, physiologically). However, beyond a given threshold, there also may be certain cues which act as important environmental markers in dynamic environments such as rivers. By utilizing both, it is likely that the odds of reproductive success improve, and over time this results in evolutionary success. For example, frogs that breed to soon are more likely to have eggs scoured out by late spring storms or have longer developmental/hatching times because water temperatures are lower. Frogs breeding later in the season may trade off greater egg deposition and hatching success with later metamorphosis and lower overwinter survival. 
+
+We know that frogs from the same populations in the exact same locations can deposit eggs more than a month later or many weeks earlier than the average observed date of deposition, depending on the annual conditions (i.e., wetter or drier years). We suspect that the water temperature may be the most important driver in this plasticity, as it may act as a threshold which once exceeded, provides a very strong indicator of "summer" or future hydrologic condition.
+
+However, the flow in a given reach of river can also be highly correlated with water temperature. Linkage between water temperature and patterns in flow may be tightly tied, particularly in rivers in the Sierra Nevada. Historically, Sierra Nevada river hydrology has been driven by a general Mediterranean pattern of wet (though variable) winter weather followed by spring snowmelt and warmer and drier summers. While temperature may exist as a spawning threshold, the actual initiation of breeding or spawning is highly variable in **R. boylii**, and likely requires additional enviromental cues such as changing water levels, flow magnitude, air temperature, humidity, etc.
+
+These additional metrics may each act as environmental cues, but to conserve plasticity across environmental variablity present in a wide geographic range, it is unlikely that any of these can dictate oviposition independently (whereas a water temperature threshold may be a sole driver in some years). In order to determine the strongest predictor of breeding, we've collected oviposition data over 6 rivers in the Sierra Nevada from 2011 through 2016. In addition we collected a variety of metrics related to flow, air temperature, water temperature, water year index, day of water year, precipitation, and barometric pressure.
+
 ## Try Model, Model Fail
 
 Let's try to assess whether water temperature, air temperature, flow (daily/weekly recession rates & discharge) play a role in predicting when breeding (oviposition occurs). To build this model we need to block by river, and by water year, as these are independent (though water year isn't *fixed*, it is fixed across all sites per each year).
 
-First let's take a look at some test data. Using a subset (say just pull the **NF American**), can we build a model that gets at whether there is predictability in these variables despite shifts in timing and magnitude from year to year?
+First let's take a look at some test data. Using a subset (say just pull the **NF American**), can we build a model that gets at whether there is predictability in these variables despite shifts in timing and magnitude from year to year? Ideally this seems to be setup for a logistic regression, where 1 is the breeding initation or observation of eggs in the river, and 0 is all the days prior to that event. An *Event History Analysis* or *Survival Analysis* approach might work (see section on geometric distribution, Ch10, pg 328). 
 
 ### Get the Data & Tidy
 
-```{r get and tidy data}
+```{r get and tidy data, eval=F, echo=F}
 
 library(tidyverse)
 library(lubridate)
@@ -70,215 +80,590 @@ rabo <- rabo %>% mutate(breed = 1, lagEM="d00")
 
 # make final logistic dataset, add 1/0 column
 rabo_logist <- rbind(rabo_LAGS, rabo)
-
+#save(rabo_logist, file = "models/rabo_logistic_all_sites.rda")
 ```
-
-
-## Rethinking Models
 
 Prepare data by removing much of the information that will be unused, and converting and scaling the data as needed.
 
-
 ```{r prepData, eval=T, echo=T}
+
+library(tidyverse)
+library(lubridate)
 library(rethinking)
 
+load("models/rabo_logistic_all_sites.rda")
+
 # Filter down data, use only unreg sites
-d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(), -date, -EM_per_km, -REG,
-                     -(obs_strt:apr_jul), -len_km, -starts_with("CDEC"), 
-                     -station, -WYsum, -lev_7_avg, -Q_cfs, 
-                     -Q_min, -Q_7_cfs) %>% 
-    filter(!site=="MFA") %>% 
-#    filter(site=="NFY" | site=="NFA") %>%
+d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(), 
+                    -date, -EM_per_km, -REG, -(obs_strt:apr_jul),
+                    -len_km, -starts_with("CDEC"), -station, -DOY,
+                    -WYsum, -lev_7_avg, -Q_cfs, -Q_min, -Q_7_cfs) %>% 
+    #filter(!site=="MFA") %>% 
+  filter(site=="NFY" | site=="NFA") %>%
   as.data.frame
 
 # RM NAs, add id and site to rownames:
 d1 <- d1 %>% filter(!is.na(temp_30_min))
 d1_rownames<- paste0(d1$site, "-",d1$WY, "-", seq(1:nrow(d1)))
 d1$site <- as.factor(d1$site)
-d1$lagEM <- as.integer(as.factor(d1$lagEM))
+d1$lagEM <- as.factor(d1$lagEM)
 
 # custom scale function
 cusScale <- function(x){
   (x - mean(x))/sd(x)
 }
 
+unScale <- function(x, y){
+  (x * sd(y) + mean(y))
+}
+
 # scale all data and rebind site and breed info:
 d1s <- d1
-d1s[,c(4:31)] <- apply(d1[,c(4:31)], 2, cusScale)
-d1s$site <- as.integer(d1s$site)
-
-d1s <- d1s %>% rename(river=site, wyind=Index)
-
+d1s[,c(4:29)] <- apply(d1[,c(4:29)], 2, cusScale) # center and scale
+d1s$site <- coerce_index(d1s$site) # for modeling
+d1s$WY <- coerce_index(d1s$WY) # for modeling
+d1s$lagEM <- coerce_index(d1s$lagEM) # for modeling
+d1s <- d1s %>% rename(river=site, wyind=Index) # rename some vars
 
 ```
 
-Intercept only model
+## Binomial (Logistic) Regression: Temp Only, No varying intercept
 
-```{r dbinom_intercept, eval=F, echo=T}
+First let's create a model with all temperature data in it (*30-day, 7-day, and CV*). 
 
-# based on m10.1
+```{r temp_1.1a}
 
-# an intercept only model of breeding
-m1.1 <- map(
-    alist(
-        breed ~ dbinom( 1 , p ) ,
-        logit(p) <- a ,
-        a ~ dnorm(0,10)
-),
-    data=d1s )
-precis(m1.1)
-logistic(c(-1.56, -1.19, -0.82)) # about a 23% chance of breeding based on these data
-```
-
-#### Start Simple: temp only no varying intercept
-
-```{r temp_only}
-
-# just temperature
+# just water temperature
 m1.1a <- map2stan(
     alist(
         breed ~ dbinom( 1 , p ) ,
-        logit(p) <- a + bt7mx*temp_7_max + bt7mn*temp_7_min + bt30mx*temp_30_max + bt30mn*temp_30_min,
+        logit(p) <- a + bt7mx*temp_7_max + bt7av*temp_7_avg + bt7mn*temp_7_min +
+           btCV*temp_CV + bt30mx*temp_30_max + bt30mn*temp_30_min,
         a ~ dnorm(0,1),
-        c(bt7mx, bt7mn, bt30mx, bt30mn) ~ dnorm(0,1)
+        c(bt7mx, bt7av, bt7mn, btCV, bt30mx, bt30mn) ~ dnorm(0,1)
     ), data=d1s, warmup=1000, iter=5000, chains=4, cores=2)
 
-precis(m1.1a, corr = T)
-logistic(c(-1.41, -0.28, .64, 0.57, 0.30)) # about a 23% chance of breeding based on these data
+precis(m1.1a)
+plot(m1.1a)
+dev.off()
+logistic(0.65) # temp 7 max
+logistic(0.56) # temp30 min (only 2% lower in prob for mean)
+
 plot(precis(m1.1a))
 
 # show density of probabilities
-post <- extract.samples(m1.1a)
-dens( post$bt7mx , xlab="Prob", ylim=c(0,1.5))
-dens( post$bt30mx, col=rangi2 , lwd=2 , add=TRUE )
-dens( post$bt7mn , col="red", add=TRUE)
-dens( post$bt30mn, col="maroon", lwd=2 , add=TRUE )
-text( 0.4 , 1 , "30dmx" , col=rangi2 )
-text( 0.85 , 1 , "7dmx" )
+post1a <- extract.samples(m1.1a)
+dens( post1a$bt7mx,  ylim=c(0,1.5), xlim=c(-5, 5))
+dens( post1a$bt7av, col="gray20", lty=2, add=TRUE)
+dens( post1a$bt7mn , col=rangi2, add=TRUE)
+dens( post1a$bt30mx, col="red2" , lwd=2 , add=TRUE )
+dens( post1a$bt30mn, col="maroon", lty=4 , add=TRUE )
+text( 0.4 , 1 , "30dmn" , col="maroon" )
+text( 2 , 0.4 , "7dmx" )
 
+# diff between distributions of 30dmn and 7dmx
+mu.1a.7mx <- logistic(post1a$a + post1a$bt7mx)
+mu.1a.30mn <- logistic(post1a$a + post1a$bt30mn)
+precis(data.frame(mu.1a.30mn,mu.1a.7mx))
+dens(mu.1a.30mn, xlim=c(0, 1), show.HPDI = T)
+dens(mu.1a.7mx, col="red2", add=T, show.HPDI=T)
 
-# now just 7day
+# difference 
+diff_30mn_7mx <- mu.1a.7mx - mu.1a.30mn
+quantile( diff_30mn_7mx , probs=c(0.025,0.5,0.975) )
+
+```
+
+This model has the main variables that seem strongest, (*7-day max, 30 day min, and CV of temp*).
+
+```{r temp_1.1b}
+# now just 7day max and 30dymin
 m1.1b <- map2stan(
     alist(
         breed ~ dbinom( 1 , p ) ,
-        logit(p) <- a + bt7mx*temp_7_max + bt7av*temp_7_avg + btCV*temp_CV ,
+        logit(p) <- a + bt7mx*temp_7_max + bt30mn*temp_30_min + btCV*temp_CV ,
         a ~ dnorm(0,1),
-        c(bt7mx, bt7av, btCV) ~ dnorm(0,1)
+        c(bt7mx, bt30mn, btCV) ~ dnorm(0,1)
     ), data=d1s, warmup=1000, iter=5000, chains=4, cores=2)
 
 plot(m1.1b)
+dev.off()
 precis(m1.1b)
+plot(precis(m1.1b))
 
 # show density of probabilities
 post1b <- extract.samples(m1.1b)
 dens( post1b$bt7mx , ylim=c(0,1.5), xlim=c(-1.4,3.4))
-dens( post1b$bt7av, col=rangi2 , lwd=2 , add=TRUE )
+dens( post1b$bt30mn, col=rangi2 , lwd=2 , add=TRUE )
 dens( post1b$btCV , col="red", add=TRUE)
 
-plot(precis(m1.1b))
+# diff between distributions of 30dmn and 7dmx
+mu.1b.7mx <- logistic(post1b$a + post1b$bt7mx)
+mu.1b.30mn <- logistic(post1b$a + post1b$bt30mn)
+mu.1b.CV <- logistic(post1b$a + post1b$btCV)
+precis( data.frame(mu.1b.CV,mu.1b.7mx, mu.1b.30mn) )
 
-# now add interaction
+# difference 
+diff_CV_7mx <- mu.1b.7mx - mu.1b.CV
+diff_30mn_7mx <- mu.1b.30mn - mu.1b.7mx
+quantile( diff_30mn_7mx , probs=c(0.025,0.5,0.975) )
+quantile( diff_CV_7mx , probs=c(0.025,0.5,0.975) )
+
+
+```
+
+And this includes a few other variables like *precipitation*.
+
+```{r temp_1.1c}
+
+# now add days no rain and top vars from last two
 m1.1c <- map2stan(
     alist(
         breed ~ dbinom( 1 , p ) ,
-        logit(p) <- a + bt7mx*temp_7_max + btCV*temp_CV + bppt*days_no_ppt ,
+        logit(p) <- a + bt7mx*temp_7_max + bt30mn*temp_30_min + btCV*temp_CV + bppt*days_no_ppt ,
         a ~ dnorm(0,1),
-        c(bt7mx, btCV, bppt) ~ dnorm(0,1)
+        c(bt7mx, bt30mn, btCV, bppt) ~ dnorm(0,1)
     ), data=d1s, warmup=1000, iter=5000, chains=4, cores=2)
 
 plot(m1.1c)
 precis(m1.1c)
+dev.off()
 plot(precis(m1.1c))
 
 # show density of probabilities
 post1c <- extract.samples(m1.1c)
-dens( post1c$bt7mx , ylim=c(0,1.7), xlim=c(-1,2.4))
+dens( post1c$bt7mx , ylim=c(0,1.7), xlim=c(-1,2.4), show.HPDI = 0.9, show.zero = T)
+text(1.5, 1, "7-day-max")
+dens( post1c$bt30mn, col="maroon" , lty=2 , add=TRUE, show.HPDI = 0.9)
+text(.5, 1.2, "30-day-min", col="maroon")
 dens( post1c$btCV, col=rangi2 , lwd=2 , add=TRUE )
+text(-0.4, 0.8, "temp_CV", col=rangi2)
 dens( post1c$bppt , col="red", add=TRUE)
+text(-0.65, 1.2, "days_no_ppt", col="red")
+
+# compute diff between 30min and 7dymax
+mu.1c.7mx <- post1c$a + post1c$bt7mx
+mu.1c.30mn <- post1c$a + post1c$bt30mn
+mu.1c.tCV <- post1c$a + post1c$btCV
 
 
+# difference 
+diff_7mx_30mn <- mu.1c.7mx - mu.1c.30mn
+diff_7mx_CV <- mu.1c.7mx - mu.1c.tCV
+quantile( diff_7mx_CV , probs=c(0.025,0.5,0.975) )
+quantile( diff_7mx_30mn , probs=c(0.025,0.5,0.975) )
+```
+
+Let's compare all three *temperature* based models, best fit appears to be model 1b.
+
+```{r compare1mods}
+# compare models
 compare(m1.1a, m1.1b, m1.1c)
+
 ```
 
-### Varying Intercept
+Looks like the model with `temp_7_max`,`temp_30_mn`, and `temp_CV` performed best, but not significantly so. The model with `ppt` and other temp values may be important. Ultimately we need to make some plots to figure this out. Also helps to create an ensemble model so that any one parameter gets "averaged" and avoids issues with trying lots of different models until you get one that "works".
 
-```{r temp varying intercept}
+I can't figure out how to extract predictions from my ensemble model for a given set of variables, or how to make a residual plot. 
 
-names(d1s)
-s(d1s)
-d1sA <- d1s %>% select(breed, river, temp_7_max, wyind)
-d1sA$breed<- as.integer(d1sA$breed)
-str(d1sA)
+```{r ensemble_temp extraction, echo=F, eval=F}
 
-# now just 7day
-m2.1a <- map2stan(
-    alist(
-        breed ~ dbinom( 1 , theta ) ,
-        logit(theta) <- a + a_river[river] + bt7mx*temp_7_max + bwyind*wyind,
-        a_river[river] ~ dnorm( 0, sigma_river ),
-        c(a,bt7mx,bwyind) ~ dnorm(0,10),
-        sigma_river ~ dcauchy(0,1)
-    ), 
-    data=d1sA, warmup=1000, iter=5000, chains=4, cores=2)
+# dummy data
 
-# view output
-plot(m2.1a)
-precis(m2.1a)
-plot(precis(m2.1a, depth=2))
+d.pred <- data.frame(
+    temp_7_max = seq(6,16, length.out=58),
+    temp_CV = seq(1,100, length.out=58),
+    temp_7_min = seq(6,16, length.out=58),
+    breed = rbinom(58, 1, 0.5),
+    temp_30_min = seq(6,16, length.out=58),
+    temp_30_max = seq(6,16, length.out=58),
+    temp_7_avg = seq(6,16, length.out=58)
+)
 
-# show density of probabilities
-post2a <- extract.samples(m2.1a)
-dens( post2a$bt7mx , ylim=c(0,1.7), xlim=c(-1,2.4))
-dens( post2a$bwyind, col=rangi2 , lwd=2 , add=TRUE )
-dens( post2a$sigma_river , col="red", add=TRUE)
+
+# how the hell do I plot this madness?
+m1_ens <- ensemble( m1.1a, m1.1b, data = d.pred)
+mu <- apply( m1_ens$link , 2 , mean )
+mu.PI <- apply( m1_ens$link , 2 , PI )
+
+pch <- ifelse(d1$site=="NFA", 16, 1)
+plot( d1$breed ~ d1$temp_7_max , col=rangi2 , pch=pch)
+
+#plot(breed ~ temp_7_max, data=d1)
+for ( i in 1:58 )
+    abline( a=post1b$a[i] , b=post1b$bt7mx[i] ,
+            col=col.alpha("black",0.3) )
+
+lines(mu , d.pred$temp_7_max )
+shade( mu.PI , d1$temp_7_max)
+
+
 ```
 
+### Binomial: Varying Intercept Temp and Flow
 
 Now add other variables into the model, with partial pooling (but no interactions):
 
-```{r dbinom_fixed, eval=F, echo=T}
+```{r flowtemp varying intercept}
 
-d1.2 <- select(d1s, breed, site, lagEM, temp_7_max, Index, deltLev, Q_CV, deltQ,
-               temp_CV, DOY, W_air_7_avg) %>% rename(wy_index=Index)
+names(d1s)
+summary(d1s)
 
-#bdeltLev*deltLev + bQCV*Q_CV + bdeltQ*deltQ + btCV*temp_CV +bDOY*DOY + bAir7*W_air_7_avg,
-#      c(bLAG, bt7, bwyi, bdeltLev, bQCV, bdeltQ, btCV, bDOY, bAir7) ~ dnorm(0,5)
-
-# now add other stuff
-m1.2 <- map2stan(
+# now just 7day flow and temp
+m2.1a <- map2stan(
     alist(
-      breed ~ dbinom( 1 , p ) ,
-      logit(p) <- a + a_site[site] + bLAG*lagEM + bt7mx*temp_7_max + bwyi*wy_index + 
-      a ~ dnorm(0,5),
-      a_site[site] ~ dnorm(0, sigma_site),
-      sigma_site ~ dcauchy(0,1),
-      c(bLAG, bt7, bwyi) ~ dnorm(0,5)
+        breed ~ dbinom( 1 , theta ) ,
+        logit(theta) <- a + a_wy[WY] + bt7mx*temp_7_max + bt30mn*temp_30_min + 
+          bdQ*deltQ + bQCV*Q_CV + bQmax*Q_max + bQ7CV*Q_7_CV + 
+          bdLev*deltLev + blevCV*lev_CV,
+        a ~ dnorm(1, 5),
+        a_wy[WY] ~ dnorm( 0, sigma_WY ),
+        c(bt7mx, bt30mn, bdQ, bQCV, bQmax, bQ7CV, bdLev, blevCV) ~ dnorm(0,1),
+        sigma_WY ~ dcauchy(0,1)
+    ), 
+    data=d1s, warmup=4000, iter=1e4, chains=2, cores=2)
+
+# view output
+plot(m2.1a)
+dev.off()
+pairs(m2.1a)
+dev.off()
+precis(m2.1a, depth=2, warn = F)
+plot(precis(m2.1a, depth=2))
+
+# show density of log-odds
+post2a <- extract.samples(m2.1a)
+dens( post2a$bt7mx , ylim=c(0,1), xlim=c(-4,6))
+dens( post2a$bdQ, col=rangi2 , lwd=2 , add=TRUE )
+dens( post2a$blevCV, col="skyblue2" , lwd=2 , add=TRUE )
+dens( post2a$bt30mn , col="red", add=TRUE)
+dens( post2a$bdLev , col="green", add=TRUE)
+
+
+coef(m2.1a)
+
+# make some plots
+plot(y=d1$breed, x=d1$temp_7_max, pch=ifelse(d1$site=="NFY", 16, 1), col=rangi2)
+plot(y=d1$lev_CV, x=d1$temp_7_max, pch=ifelse(d1$site=="NFY", 16, 1), col=rangi2, ylim=c(0,20))
+abline(a=coef(m2.1a)["blevCV"] , b=coef(m2.1a)["bt7mx"] , col=col.alpha("black",0.3))
+
+for (i in 1:30)
+  abline( a=post2a$a_wy[i], b=logistic(post2a$bt7mx[i]))
+
+
+# compute expected value at MAP
+mu <- coef(m2.1a)['a'] + coef(m2.1a)['a_wy[2]'] + coef(m2.1a)['bt7mx']*d1s$temp_7_max
+# compute residual
+m.resid <- d1s$temp_7_max - mu
+
+
+plot( temp_7_max ~ lev_CV , d1s , pch=ifelse(d1s$river==1, 16, 1), col=rangi2, axes=F)
+atx <- c(seq(-2, 3.1, 0.5))
+aty <- c(seq(-2, 2.2, 0.5))
+labels <- atx*sd(d1$lev_CV) + mean(d1$lev_CV)
+labelsy <- aty*sd(d1$temp_7_max) + mean(d1$temp_7_max)
+axis(side=1, at = atx, labels=round(labels, 1))
+axis(side=2, at = aty, labels=round(labelsy, 1))
+#abline( a=coef(m2.1a)['blevCV'], b=coef(m2.1a)['bt7mx']*d1s$temp_7_max[1])
+abline( a=coef(m2.1a)['a'], b=coef(m2.1a)['bt7mx'])
+
+for (i in 1:30)
+  abline( a=post2a$a_wy[i], b=post2a$bt7mx[i], col=col.alpha("gray", alpha=0.6))
+
+
+# loop over States
+for ( i in 1:length(m.resid) ) {
+    x <- d1s$lev_CV[i] # x location of line segment
+    y <- d1s$temp_7_max[i] # observed endpoint of line segment
+    # draw the line segment
+    lines( c(x,x) , c(mu[i],y) , lwd=0.5 , col=col.alpha("black",0.7) )
+}
+
+```
+
+
+#### Notes from Myfanwy 2017-05-24
+
+Use DOWY, not binomial, sites are coin flips. What triggers breeding, but doesn't help answer more important factors of what drives breeding? Want response to be as continuous as possible. 
+
+**DOWY as response**
+gammaPoisson, has individual "rate", rate should be affected in same way by different predictor variables. Different sites as nested variables, rate varies by site. 
+
+**Survival Analysis**
+
+How long does an event take to occur, (i.e., time to breeding)? Freezing over in a lake as example. Continuous segmented regression, (tobit regression) + probit model with time series with latent variable.
+
+**MultiState Model**
+
+predicting frequencies that will be occupied on radio, occupied vs. not.
+
+Hidden Markov model, model conditions leading up to observable state (hidden state). Hidden markov poisson, describe variability that characterizes this latent state that you don't observe, but you know it drives the latent state.
+
+Eric Van Cleaves (multistate modeler, spatial component)
+
+Input matrix: 365 x 30 variables
+Each row is day of year
+Whether a breeding event occurred on that day as binomial
+
+
+## Continuous gamma-Poisson Model or Beta Binomial
+
+pg350 in Rethinking: "*Predictor variables adjust the shape of this distribution, not the expected value of each observation.  The gamma-Poisson model is very much like a beta-binomial model, with the gamma distribution of rates (or expected values) replacing the beta distribution of probabilities of success.*"
+
+```{r viewCurves}
+# gammaPois
+mu <- 3
+theta <- 1
+curve( dgamma2(x,mu,theta) , from=0 , to=10 )
+
+#betaBinom
+pbar <- 0.5
+theta <- 5
+curve( dbeta2(x,pbar,theta) , from=0 , to=1 ,
+       xlab="probability" , ylab="Density" )
+
+```
+
+As theta approaches zero, the gamma distribution approaches a Gaussian distribution with the same mean value.  It will try to account for unobserved heterogeneity in probabilities and rates. Don't use WAIC!
+
+**Don't use WAIC with gammaPoisson**
+You should not use WAIC with these models, however, unless you are very sure of what you are doing.  e reason is that while ordinary binomial and Poisson models can be aggre- gated and disaggregated across rows in the data, without changing any causal assumptions, the same is not true of beta-binomial and gamma-Poisson models.  e reason is that a beta- binomial or gamma-Poisson likelihood applies an unobserved parameter to each row in the data. When we then go to calculate log-likelihoods, how the data are structured will deter- mine how the beta-distributed or gamma-distributed variation enters the model.
+
+**Use DIC**
+
+### Beta-Binomial
+```{r}
+library(rethinking)
+names(d1)
+d1$lagEM <- coerce_index(d1$lagEM)
+d1$site <- coerce_index(d1$site)
+
+m11.5 <- map2stan(
+    alist(
+        DOWY ~ dbetabinom(temp_7_max,pbar,theta),
+        logit(pbar) <- a + b*lagEM + blevCV*lev_CV + bwyi*wyind,
+        c(a, b, blevCV, bwyi) ~ dnorm(0,2),
+        theta ~ dexp(1)
     ),
-    data=d1.2)
+    data=d1,
+    constraints=list(theta="lower=0"),
+    start=list(theta=3),
+    iter=4000 , warmup=1000 , chains=2 , cores=2 )
+```
 
-precis(m10.2)
-logistic(c(1.63, 0.96,-.94, -1.01, 0.80)) # about a 20% chance of breeding based 
+### stanarm?
+```{r diff rstanpkg}
 
-m10.2stan <- map2stan( m10.2 , data=d.1s , iter=1e4 , warmup=1000 )
-precis(m10.2stan)
-plot(m10.2stan)
-plot(precis(m10.2stan))
+library(rstanarm)
+
+d1b <- filter(d1, breed==1)
+summary(d1b)
+
+# try fitting a glm with interaction between best flow and the best temp metric
+fit <- stan_glm(DOWY ~ temp_7_max * deltLev, data = d1b, family = Gamma, 
+                prior_intercept = normal(0,1), prior = normal(0,1),
+                chains = 4, cores = 2)
+
+print(fit, digits = 3)
+plot(fit)
+pp_check(fit, plotfun = "stat_2d", stat = c("mean", "sd"))
+
+dowy_SEQ <- seq(from = 200, to = 280, length.out = 20)
+temp_SEQ <- seq(from = 6, to=16, length.out = 20)
+y_nohs <- posterior_predict(fit, newdata = data.frame(temp_7_max = temp_SEQ, DOWY = dowy_SEQ, deltLev = -.01))
+y_hs <- posterior_predict(fit, newdata = data.frame(temp_7_max = temp_SEQ, DOWY = dowy_SEQ, deltLev = -.1))
+dim(y_hs)
+
+par(mfrow = c(1:2), mar = c(5,4,2,1))
+boxplot(y_hs, axes = FALSE, outline = FALSE, ylim = c(150,350),
+        xlab = "Temp7mx", ylab = "Predicted DOWY", main = "deltLev = -0.1")
+axis(1, at = 1:ncol(y_hs), labels = round(temp_SEQ, 0), las = 3)
+axis(2, las = 1)
+boxplot(y_nohs, outline = FALSE, col = "red", axes = FALSE, ylim = c(150,350),
+        xlab = "Temp7mx", ylab = NULL, main = "delLev= -0.01")
+axis(1, at = 1:ncol(y_hs), labels = round(temp_SEQ,0), las = 3)
 
 
+```
+
+
+```{r gamPoisson}
+
+d1f <- d1 %>% filter(breed==1) # NFY and NFA breeding only
+
+#change delts to positive:
+d1f$deltQexp <- exp(d1f$deltQ)
+d1f$deltLevexp <- exp(d1f$deltLev)
+d1f$log_DOWY <- log(d1f$DOWY)
+
+m3 <- map2stan(
+  alist(
+    log_DOWY ~ dgampois(mu, scale),
+    log(mu) <- a + bt7mx*temp_7_max + bwyi*Index + bdeltLev * deltLevexp +
+      bWairmx*W_air_30_max + blevCV*lev_CV,
+    a ~ dnorm(0, 10),
+    c(bt7mx, bwyi, bdeltLev, bWairmx, blevCV) ~ dnorm(0,1),
+    scale ~ dcauchy(0,1)
+  ),
+  data=d1f,
+  constraints=list(scale="lower=0"),
+  start=list(scale=1),
+  warmup=1000, iter=8000, chains=2, cores=2)
+
+precis(m3)
+plot(m3)
+
+postcheck(m3)
+#blue points show the empirical proportion on each row of the data
+#open circles are the posterior mean p, with 89% percentile interval
+# + symbols mark the 89% interval of predicted counts for breeding. Lots of dispersion expected here.
+
+
+post3 <- extract.samples(m3)
+quantile( logistic(post3$a) , c(0.025,0.5,0.975) )
+
+# draw posterior mean dgam distribution
+curve( dgampois(x,mean(logistic(post3$a)),mean(post3$scale)) , from=0 , to=1 ,
+    ylab="Density" , xlab="probability", ylim=c(0,3) , lwd=2 )
+# draw 100 beta distributions sampled from posterior
+for ( i in 1:100 ) {
+    p <- logistic( post3$a[i] )
+    scale <- post3$scale[i]
+    curve( dgampois(x,p,scale) , add=TRUE , col=col.alpha("black",0.2) )
+}
+
+
+```
+
+### Multilevel Poisson
+
+```{r}
+
+m12.6 <- map2stan(
+  alist(
+    total_tools ~ dpois(mu),
+    log(mu) <- a + a_society[society] + bp*logpop,
+    a ~ dnorm(0,10),
+    bp ~ dnorm(0,1),
+    a_society[society] ~ dnorm(0,sigma_society),
+    sigma_society ~ dcauchy(0,1)
+),
+data=d ,
+iter=4000 , chains=3 )
+
+
+post <- extract.samples(m12.6)
+d.pred <- list(
+    logpop = seq(from=6,to=14,length.out=30),
+    society = rep(1,30)
+)
+a_society_sims <- rnorm(20000,0,post$sigma_society)
+a_society_sims <- matrix(a_society_sims,2000,10)
+link.m12.6 <- link( m12.6 , n=2000 , data=d.pred ,
+    replace=list(a_society=a_society_sims) )
+
+# plot raw data
+plot( d$logpop , d$total_tools , col=rangi2 , pch=16 ,
+    xlab="log population" , ylab="total tools" )
+# plot posterior median
+mu.median <- apply( link.m12.6 , 2 , median )
+lines( d.pred$logpop , mu.median )
+# plot 97%, 89%, and 67% intervals (all prime numbers)
+mu.PI <- apply( link.m12.6 , 2 , PI , prob=0.97 )
+shade( mu.PI , d.pred$logpop )
+
+
+
+```
+
+
+
+#### Flow and Stage
+
+SHould think about varying intercept as water year or index and not just by river. 
+```{r flow_temp interaction}
+
+# filter to only breeding points and look at interactions between these two vars
+
+d1f <- d1s %>% filter(breed==1) # NFY and NFA breeding only
+names(d1f)
+d1f$deltQexp <- exp(d1f$deltQ)
+d1f$deltLevexp <- exp(d1f$deltLev)
+d1f$exp_DOWY <- exp(d1f$DOWY)
+
+# now just 7day temp + lev_CV
+
+m2.1b <- map2stan(
+    alist(
+        log_DOWY ~ dnorm( mu , sigma ) ,
+        mu <- a + a_wy[WY] + bt7mx*temp_7_max + bdeltLev*deltLevexp +
+          bWairmx*W_air_30_max,
+        c(a, bt7mx, bdeltLev, bWairmx) ~ dnorm(0,1),
+        a_wy[WY] ~ dnorm( 0, sigma_WY),
+        sigma ~ dcauchy(0,1),
+        sigma_WY ~ dcauchy(0,1)
+    ), 
+    data=d1f, warmup=1000, iter=5000, chains=4, cores=2)
+
+# view output
+plot(m2.1b)
+dev.off()
+pairs(m2.1b)
+dev.off()
+precis(m2.1b, depth=2, warn = F)
+plot(precis(m2.1b, depth=2))
+
+# show density of log-odds
+post2b <- extract.samples(m2.1b)
+dens( post2b$bdeltLev, col="skyblue2" , lwd=2 )
+coef(m2.1b)
+
+# make some plots
+plot(y=d1sB$lev_CV, x=d1sB$temp_7_max, pch=ifelse(d1$site=="NFY", 16, 1), col=rangi2)
+abline(a=coef(m2.1b)["a"] , b=coef(m2.1b)["blevCV"] , col="black", lty=2)
+
+for (i in 1:12)
+  abline( a=post2b$a_wy[i], b=post2b$blevCV[i])
+
+
+# compute expected value at MAP
+mu <- coef(m2.1b)['a'] + coef(m2.1b)['blevCV']*d1sB$lev_CV
+# compute residual
+m.resid <- d1sB$lev_CV - mu
+
+
+plot( temp_7_max ~ lev_CV   , d1sB , pch=ifelse(d1s$WY==1, 16, 1), col=rangi2, axes=F)
+atx <- c(seq(-2, 3.1, 0.5))
+aty <- c(seq(-2, 2.2, 0.5))
+labelsx <- atx*sd(d1$lev_CV) + mean(d1$lev_CV)
+labelsy <- aty*sd(d1$temp_7_max) + mean(d1$temp_7_max)
+axis(side=1, at = atx, labels=round(labelsx, 1))
+axis(side=2, at = aty, labels=round(labelsy, 1))
+abline( a=coef(m2.1b)["a"] , b=coef(m2.1b)["blevCV"]*d1sB$lev_CV)
+
+# loop over States
+for ( i in 1:length(m.resid) ) {
+    x <- d1sB$lev_CV[i] # x location of line segment
+    y <- d1sB$temp_7_max[i] # observed endpoint of line segment
+    # draw the line segment
+    lines( c(x,x) , c(mu[i],y) , lwd=0.5 , col=col.alpha("black",0.7) )
+}
+```
+
+```{r jacobgampoisson}
 
 #########
 # from Jacob 05/17/17
 mz43 <- map2stan(
   alist(
-    DOWY ~ dgampois(mu,scale),
-    log(mu) <- a_river[river_id] + bt7*temp_7_avg + bwyi*Index + bdeltLev * deltLev +
-      bQCV * Q_CV + bdeltQ * deltQ + bQ*Q_cfs + bWair*W_air_30_max + btCV*temp_CV,
-    a_river[river_id] ~ dcauchy(10,sigma_site),
+    Zoops ~ dgampois(mu,scale),
+    log(mu) <- a_site[site_id] + bt*temp + bno * NO3.N + bp * PO4.P + bd * DOC + bj * JulianDay,
+    a_site[site_id] ~ dcauchy(10,sigma_site),
     sigma_site ~ dcauchy(1,1),
-    c(bt7, bwyi, bdeltLev, bQCV, bdelQ, bQ, bWair, btCV) ~ dnorm(0,1),
+    c(bt,bno,bp,bd,bj) ~ dnorm(0,1),
     scale ~ dcauchy(0,2)
   ),
-  data=d,
+  data=zb,
   constraints=list(scale="lower=0"),
   start=list(scale=2)
 )
