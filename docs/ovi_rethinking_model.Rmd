@@ -460,26 +460,37 @@ d1b <- filter(d1, breed==1)
 summary(d1b)
 
 # try fitting a glm with interaction between best flow and the best temp metric
-fit <- stan_glm(DOWY ~ temp_7_max * deltLev, data = d1b, family = Gamma, 
+fit <- stan_glm(DOWY ~ breed + temp_7_max + deltLev, data = d1, family = Gamma, 
                 prior_intercept = normal(0,1), prior = normal(0,1),
                 chains = 4, cores = 2)
 
+# poisson
+fit <- stan_glm(DOWY ~ breed + temp_7_max + deltLev, data = d1, family = poisson(link="log"), 
+                prior_intercept = normal(0,1), prior = normal(0,1),
+                chains = 4, cores = 2)
+
+(loo1 <- loo(fit))
+loo2 <- loo(fit2)
+(comp<-compare_models(loo1, loo2))
+
 print(fit, digits = 3)
+bayesplot::color_scheme_set("brightblue")
 plot(fit)
 pp_check(fit, plotfun = "stat_2d", stat = c("mean", "sd"))
+pp_check(fit, plotfun = "hist", nreps=5)
 
 dowy_SEQ <- seq(from = 200, to = 280, length.out = 20)
 temp_SEQ <- seq(from = 6, to=16, length.out = 20)
-y_nohs <- posterior_predict(fit, newdata = data.frame(temp_7_max = temp_SEQ, DOWY = dowy_SEQ, deltLev = -.01))
-y_hs <- posterior_predict(fit, newdata = data.frame(temp_7_max = temp_SEQ, DOWY = dowy_SEQ, deltLev = -.1))
+y_nohs <- posterior_predict(fit, newdata = data.frame(temp_7_max = temp_SEQ, DOWY = dowy_SEQ, deltLev = -.01, breed=0))
+y_hs <- posterior_predict(fit, newdata = data.frame(temp_7_max = temp_SEQ, DOWY = dowy_SEQ, deltLev = -.1, breed=1))
 dim(y_hs)
 
 par(mfrow = c(1:2), mar = c(5,4,2,1))
-boxplot(y_hs, axes = FALSE, outline = FALSE, ylim = c(150,350),
+boxplot(y_hs, axes = FALSE, outline = FALSE, ylim = c(150,330),
         xlab = "Temp7mx", ylab = "Predicted DOWY", main = "deltLev = -0.1")
 axis(1, at = 1:ncol(y_hs), labels = round(temp_SEQ, 0), las = 3)
 axis(2, las = 1)
-boxplot(y_nohs, outline = FALSE, col = "red", axes = FALSE, ylim = c(150,350),
+boxplot(y_nohs, outline = FALSE, col = "red", axes = FALSE, ylim = c(150,330),
         xlab = "Temp7mx", ylab = NULL, main = "delLev= -0.01")
 axis(1, at = 1:ncol(y_hs), labels = round(temp_SEQ,0), las = 3)
 

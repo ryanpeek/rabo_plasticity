@@ -1,0 +1,333 @@
+---
+title: "Oviposition Logistic"
+author: "Ryan Peek"
+date: "Updated: `r format(Sys.Date())`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+```
+
+# What Permits Plasticity in Breeding Timing in River Frogs?
+
+How might varying environmental conditions provide cues for breeding timing from year to year? For frogs that have an amazing plasticity in breeding oviposition timing (inital deposition of eggs) such as *Rana boylii*, there must be certain thresholds that exist (a cutoff which makes oviposition not possible, physiologically). However, beyond a given threshold, there also may be certain cues which act as important environmental markers in dynamic environments such as rivers. By utilizing both, it is likely that the odds of reproductive success improve, and over time this results in evolutionary success. For example, frogs that breed to soon are more likely to have eggs scoured out by late spring storms or have longer developmental/hatching times because water temperatures are lower. Frogs breeding later in the season may trade off greater egg deposition and hatching success with later metamorphosis and lower overwinter survival. 
+
+We know that frogs from the same populations in the exact same locations can deposit eggs more than a month later or many weeks earlier than the average observed date of deposition, depending on the annual conditions (i.e., wetter or drier years). We suspect that the water temperature may be the most important driver in this plasticity, as it may act as a threshold which once exceeded, provides a very strong indicator of "summer" or future hydrologic condition.
+
+However, the flow in a given reach of river can also be highly correlated with water temperature. Linkage between water temperature and patterns in flow may be tightly tied, particularly in rivers in the Sierra Nevada. Historically, Sierra Nevada river hydrology has been driven by a general Mediterranean pattern of wet (though variable) winter weather followed by spring snowmelt and warmer and drier summers. While temperature may exist as a spawning threshold, the actual initiation of breeding or spawning is highly variable in **R. boylii**, and likely requires additional enviromental cues such as changing water levels, flow magnitude, air temperature, humidity, etc.
+
+These additional metrics may each act as environmental cues, but to conserve plasticity across environmental variablity present in a wide geographic range, it is unlikely that any of these can dictate oviposition independently (whereas a water temperature threshold may be a sole driver in some years). In order to determine the strongest predictor of breeding, we've collected oviposition data over 6 rivers in the Sierra Nevada from 2011 through 2016. In addition we collected a variety of metrics related to flow, air temperature, water temperature, water year index, day of water year, precipitation, and barometric pressure.
+
+## Try Model, Model Fail
+
+Let's try to assess whether water temperature, air temperature, flow (daily/weekly recession rates & discharge) play a role in predicting when breeding (oviposition occurs). To build this model we need to block by river, and by water year, as these are independent (though water year isn't *fixed*, it is fixed across all sites per each year).
+
+First let's take a look at some test data. Using a subset (say just pull the **NF American**), can we build a model that gets at whether there is predictability in these variables despite shifts in timing and magnitude from year to year? Ideally this seems to be setup for a logistic regression, where 1 is the breeding initation or observation of eggs in the river, and 0 is all the days prior to that event. An *Event History Analysis* or *Survival Analysis* approach might work (see section on geometric distribution, Ch10, pg 328). 
+
+### Get the Data & Tidy
+
+```{r get and tidy data, eval=F, echo=F}
+
+library(tidyverse)
+library(lubridate)
+
+load("data/master_dat_2011-2016.rda") 
+load("data/flow_dv_cfs_2011_6sites.rda") # updated and merged flows:
+
+df <- master_df
+# df <- master_df %>% filter(site!="MFY")
+# df <- master_df %>% filter(month(date)>2 & month(date)<8 & !site=="MFA")
+# df <- master_df %>% filter(month(date)>3 & month(date)<8 & site=="NFA" | site=="NFY")
+
+
+# 2 NAs in dataset from 30 day avgs
+df[!is.na(df$missData) & df$site=="RUB" & df$date==ymd("2011-05-26"),]$temp_30_max<-10.99
+df[!is.na(df$missData) & df$site=="RUB" & df$date==ymd("2011-05-26"),]$temp_30_min<-9.7
+
+rabo <- df[!is.na(df$missData),] %>% arrange(date)
+
+# add unique rownames based on siteID
+rabo <- rabo %>%
+  mutate("siteID" = paste0(site, "-", row.names(.))) %>% 
+  column_to_rownames(var = "siteID")  %>% as.data.frame
+#names(rabo)
+#rownames(rabo)
+
+# create column with date for 15 and 30 day lags (for binomial logistic)
+rabo_lag <- rabo %>% 
+  mutate(d07 = date - 7, 
+         d14 = date - 14,
+         d21 = date - 21,
+         d30 = date - 30) %>% 
+  select(site, date, WY, d07:d30)
+
+# rejoin / filter form orig dataset
+
+rabo_bin7<- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d07")) %>% select(-c(date.y, d14:d30)) %>% mutate(lagEM="d07")
+rabo_bin14 <- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d14")) %>% select(-c(date.y, d07:d30)) %>% mutate(lagEM="d14")
+rabo_bin21 <- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d21")) %>% select(-c(date.y, d07:d30)) %>% mutate(lagEM="d21")
+rabo_bin30 <- inner_join(df, rabo_lag, by=c("site"="site", "WY"="WY", "date"="d30")) %>% select(-c(date.y, d07:d21)) %>% mutate(lagEM="d30")
+
+# bind up for one dataset of lags, add 1/0 col for breeding
+rabo_LAGS<-rbind(rabo_bin7, rabo_bin14, rabo_bin21, rabo_bin30) %>% 
+  mutate(breed = 0)
+rm(list=ls(pattern = "rabo_bin*"))
+
+# add breed col to orig dataset:
+rabo <- rabo %>% mutate(breed = 1, lagEM="d00")
+
+# make final logistic dataset, add 1/0 column
+rabo_logist <- rbind(rabo_LAGS, rabo)
+#save(rabo_logist, file = "models/rabo_logistic_all_sites.rda")
+```
+
+Prepare data by removing much of the information that will be unused, and converting and scaling the data as needed.
+
+```{r prepData, eval=T, echo=T}
+
+library(tidyverse)
+library(lubridate)
+library(rethinking)
+
+load("models/rabo_logistic_all_sites.rda")
+
+# Filter down data, use only unreg sites
+d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(), 
+                    -date, -EM_per_km, -REG, -(obs_strt:apr_jul),
+                    -len_km, -starts_with("CDEC"), -station, -DOY,
+                    -WYsum, -lev_7_avg, -Q_cfs, -Q_min, -Q_7_cfs) %>% 
+    #filter(!site=="MFA") %>% 
+  filter(site=="NFY" | site=="NFA") %>%
+  as.data.frame
+
+# RM NAs, add id and site to rownames:
+d1 <- d1 %>% filter(!is.na(temp_30_min))
+d1_rownames<- paste0(d1$site, "-",d1$WY, "-", seq(1:nrow(d1)))
+d1$site <- as.factor(d1$site)
+d1$lagEM <- as.factor(d1$lagEM)
+
+# custom scale function
+cusScale <- function(x){
+  (x - mean(x))/sd(x)
+}
+
+unScale <- function(x, y){
+  (x * sd(y) + mean(y))
+}
+
+# scale all data and rebind site and breed info:
+d1s <- d1
+d1s[,c(4:29)] <- apply(d1[,c(4:29)], 2, cusScale) # center and scale
+d1s$site <- coerce_index(d1s$site) # for modeling
+d1s$WY <- coerce_index(d1s$WY) # for modeling
+d1s$lagEM <- coerce_index(d1s$lagEM) # for modeling
+d1s <- d1s %>% rename(river=site, wyind=Index) # rename some vars
+
+```
+
+## Do Some Exploratory Modeling
+
+After initially trying logisitic regression, I think the better approach may be using a continuous variable (DOWY), and including breeding as a binary 1/0. It would allow a better sense of how relevant the effect is on breeding, alternatively I can model just the breeding points and see which are strongest predictors, then use only those variables for the mixed (0/1) dataset.
+
+```{r baseMod}
+
+# only the breeding points?
+d1 <- d1 %>% filter(breed==1)
+d1s <- d1s %>% filter(breed==1)
+d1$DOWY_log <- log(d1$DOWY)
+d1$deltLevEX<-exp(d1$deltLev)
+d1$WY<-coerce_index(d1$WY)
+d1$lagEM<-coerce_index(d1$lagEM)
+d1$obs <- 1:nrow(d1)
+
+m1<- map2stan(
+  alist(
+    DOWY ~ dpois(mu),
+    log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX,
+    a ~ dnorm(0,10),
+    a_lag[lagEM] ~ dnorm(a,sigma_lag),
+    c(bt7mx, bt30mn, bQCV, bdLev) ~ dnorm(1,10),
+    sigma_lag ~ dcauchy(0,1)
+),
+data=d1, iter=6000 , chains=4, cores=2)
+
+m2<- map2stan(
+  alist(
+    DOWY ~ dpois(mu),
+    log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max,
+    a ~ dnorm(0,10),
+    a_lag[lagEM] ~ dnorm(a,sigma_lag),
+    c(bt7mx) ~ dnorm(1,10),
+    sigma_lag ~ dcauchy(0,1)
+),
+data=d1, iter=6000 , chains=4, cores=2)
+
+
+# plots and stuff
+plot(m2)
+dev.off()
+precis(m2, depth=2, warn=F)
+plot(precis(m2, depth=2,warn=F))
+
+# show density of probabilities
+post1 <- extract.samples(m2)
+dens( post1$bdLev , col="red", add=F, ylim=c(0,50))
+dens( post1$bt7mx, add=F)#ylim=c(0,1.5), xlim=c(-1.4,3.4))
+dens( post1$bt30mn, col=rangi2 , lwd=2 , add=TRUE )
+
+
+```
+
+Looks like the model with `temp_7_max`, and `temp_30_mn` performed best, but not significantly so. The model with `ppt` and other temp values may be important. Ultimately we need to make some plots to figure this out. Also helps to create an ensemble model so that any one parameter gets "averaged" and avoids issues with trying lots of different models until you get one that "works".
+
+I can't figure out how to extract predictions from my ensemble model for a given set of variables, or how to make a residual plot. 
+
+
+#### Notes from Myfanwy 2017-05-24
+
+Use DOWY, not binomial, sites are coin flips. What triggers breeding, but doesn't help answer more important factors of what drives breeding? Want response to be as continuous as possible. 
+
+**DOWY as response**
+gammaPoisson, has individual "rate", rate should be affected in same way by different predictor variables. Different sites as nested variables, rate varies by site. 
+
+**Survival Analysis**
+
+How long does an event take to occur, (i.e., time to breeding)? Freezing over in a lake as example. Continuous segmented regression, (tobit regression) + probit model with time series with latent variable.
+
+**MultiState Model**
+
+predicting frequencies that will be occupied on radio, occupied vs. not.
+
+Hidden Markov model, model conditions leading up to observable state (hidden state). Hidden markov poisson, describe variability that characterizes this latent state that you don't observe, but you know it drives the latent state.
+
+Eric Van Cleaves (multistate modeler, spatial component)
+
+Input matrix: 365 x 30 variables
+Each row is day of year
+Whether a breeding event occurred on that day as binomial
+
+
+
+
+```{r gamPoisson}
+
+d1f <- d1 %>% filter(breed==1) # NFY and NFA breeding only
+
+#change delts to positive:
+d1f$deltQexp <- exp(d1f$deltQ)
+d1f$deltLevexp <- exp(d1f$deltLev)
+d1f$log_DOWY <- log(d1f$DOWY)
+
+m3 <- map2stan(
+  alist(
+    log_DOWY ~ dgampois(mu, scale),
+    log(mu) <- a + bt7mx*temp_7_max + bwyi*Index + bdeltLev * deltLevexp +
+      bWairmx*W_air_30_max + blevCV*lev_CV,
+    a ~ dnorm(0, 10),
+    c(bt7mx, bwyi, bdeltLev, bWairmx, blevCV) ~ dnorm(0,1),
+    scale ~ dcauchy(0,1)
+  ),
+  data=d1f,
+  constraints=list(scale="lower=0"),
+  start=list(scale=1),
+  warmup=1000, iter=8000, chains=2, cores=2)
+
+precis(m3)
+plot(m3)
+
+postcheck(m3)
+#blue points show the empirical proportion on each row of the data
+#open circles are the posterior mean p, with 89% percentile interval
+# + symbols mark the 89% interval of predicted counts for breeding. Lots of dispersion expected here.
+
+
+post3 <- extract.samples(m3)
+quantile( logistic(post3$a) , c(0.025,0.5,0.975) )
+
+# draw posterior mean dgam distribution
+curve( dgampois(x,mean(logistic(post3$a)),mean(post3$scale)) , from=0 , to=1 ,
+    ylab="Density" , xlab="probability", ylim=c(0,3) , lwd=2 )
+# draw 100 beta distributions sampled from posterior
+for ( i in 1:100 ) {
+    p <- logistic( post3$a[i] )
+    scale <- post3$scale[i]
+    curve( dgampois(x,p,scale) , add=TRUE , col=col.alpha("black",0.2) )
+}
+
+
+```
+
+
+
+
+
+```{r}
+# show density of log-odds
+coef(m1)
+
+# make some plots
+plot(x=d1$DOWY, y=d1$temp_7_max, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==1, rangi2, "red"))
+
+abline(a=exp(coef(m1)["bt7mx"]), b=exp(coef(m1)["bQCV"]),
+       col="black", lty=2)
+
+
+# vars:
+#a_lag[lagEM] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX
+
+# counterfactual
+d.pred <- list(
+    lagEM = rep(1,30),
+    #DOWY = seq(150,300, length.out = 50),
+    temp_7_max = seq(6,16, length.out = 30)
+    #temp_30_min = seq(4,16, length.out = 30),
+    #Q_CV = seq(0,40, length.out = 30),
+    #deltLevEX = seq(0.7, 1.2, length.out = 30)
+)
+
+#a_lag_sims <- rnorm(20000,,post1$sigma_lag)
+#a_lag_sims <- matrix(a_lag_sims,2000,10)
+link.m1 <- link( m2 , n=2000 , data=d.pred)
+
+# plot raw data
+plot(d1$DOWY~d1$temp_7_max, pch=ifelse(d1$lagEM==1, 16, 21),
+     col=ifelse(d1$WY==1, rangi2, "red"),
+     #xlim=c(0,300), ylim=c(0,30),
+     xlab="Temp 7 max" , ylab="DOWY")
+
+# plot posterior median
+mu.median <- apply( link.m1 , 2 , median )
+lines(d.pred$temp_7_max, mu.median)
+
+# plot 97%, 89%, and 67% intervals (all prime numbers)
+mu.PI <- apply( link.m1 , 2 , PI , prob=0.97 )
+shade(mu.PI, d.pred$temp_7_max )
+mu.PI <- apply( link.m1 , 2 , PI , prob=0.89 )
+shade(mu.PI, d.pred$temp_7_max )
+mu.PI <- apply( link.m1 , 2 , PI , prob=0.67 )
+shade(mu.PI, d.pred$temp_7_max )
+
+```
+
+```{r jacobgampoisson}
+
+#########
+# from Jacob 05/17/17
+mz43 <- map2stan(
+  alist(
+    Zoops ~ dgampois(mu,scale),
+    log(mu) <- a_site[site_id] + bt*temp + bno * NO3.N + bp * PO4.P + bd * DOC + bj * JulianDay,
+    a_site[site_id] ~ dcauchy(10,sigma_site),
+    sigma_site ~ dcauchy(1,1),
+    c(bt,bno,bp,bd,bj) ~ dnorm(0,1),
+    scale ~ dcauchy(0,2)
+  ),
+  data=zb,
+  constraints=list(scale="lower=0"),
+  start=list(scale=2)
+)
+
+```
+
