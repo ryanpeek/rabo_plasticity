@@ -99,7 +99,7 @@ d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(),
                     -len_km, -starts_with("CDEC"), -station, -DOY,
                     -WYsum, -lev_7_avg, -Q_cfs, -Q_min, -Q_7_cfs) %>% 
     #filter(!site=="MFA") %>% 
-  filter(site=="NFY" | site=="NFA") %>%
+  filter(site=="NFY" | site=="NFA" | site=="RUB") %>%
   as.data.frame
 
 # RM NAs, add id and site to rownames:
@@ -131,38 +131,51 @@ d1s <- d1s %>% rename(river=site, wyind=Index) # rename some vars
 
 After initially trying logisitic regression, I think the better approach may be using a continuous variable (DOWY), and including breeding as a binary 1/0. It would allow a better sense of how relevant the effect is on breeding, alternatively I can model just the breeding points and see which are strongest predictors, then use only those variables for the mixed (0/1) dataset.
 
-```{r baseMod}
+### Poisson Models
+
+```{r Poisson}
 
 # only the breeding points?
-d1 <- d1 %>% filter(breed==1)
-d1s <- d1s %>% filter(breed==1)
+#d1 <- d1 %>% filter(breed==1)
+#d1s <- d1s %>% filter(breed==1)
 d1$DOWY_log <- log(d1$DOWY)
 d1$deltLevEX<-exp(d1$deltLev)
 d1$WY<-coerce_index(d1$WY)
 d1$lagEM<-coerce_index(d1$lagEM)
 d1$obs <- 1:nrow(d1)
+d1$site<-coerce_index(d1$site)
 
+# MOdel 1
 m1<- map2stan(
   alist(
     DOWY ~ dpois(mu),
     log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX,
-    a ~ dnorm(0,10),
-    a_lag[lagEM] ~ dnorm(a,sigma_lag),
+    a ~ dnorm(5,10),
+    a_lag[lagEM] ~ dnorm(a, sigma_lag),
     c(bt7mx, bt30mn, bQCV, bdLev) ~ dnorm(1,10),
-    sigma_lag ~ dcauchy(0,1)
+    sigma_lag ~ dcauchy(1,1)
 ),
 data=d1, iter=6000 , chains=4, cores=2)
 
+
+# plots and stuff
+plot(m1)
+dev.off()
+precis(m1, depth=2, warn=F)
+plot(precis(m2, depth=2,warn=F))
+
+# Model 2
 m2<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max,
+    log(mu) <- a + a_site[site] + bt7mx*temp_7_max +
+      bt7mxIND*(temp_7_max+Index),
     a ~ dnorm(0,10),
-    a_lag[lagEM] ~ dnorm(a,sigma_lag),
-    c(bt7mx) ~ dnorm(1,10),
-    sigma_lag ~ dcauchy(0,1)
+    a_site[site] ~ dnorm(a,sigma_site),
+    c(bt7mx, bt7mxIND) ~ dnorm(1,10),
+    sigma_site ~ dcauchy(0,2)
 ),
-data=d1, iter=6000 , chains=4, cores=2)
+data=d1, iter=8000 , chains=4, cores=2)
 
 
 # plots and stuff
@@ -171,11 +184,31 @@ dev.off()
 precis(m2, depth=2, warn=F)
 plot(precis(m2, depth=2,warn=F))
 
+
+m3 <- map2stan(
+  alist(
+    DOWY ~ dpois(mu),
+    log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max + bt30mn*temp_30_min +
+      bQCV*Q_CV + bdLev*deltLevEX + bQmx*Q_max + bWairmx*W_air_max +
+      bwy*WY,
+    a ~ dnorm(10,10),
+    a_lag[lagEM] ~ dnorm(a,sigma_lag),
+    c(bt7mx, bt30mn, bQCV, bdLev, bQmx, bWairmx, bwy) ~ dnorm(1,10),
+    sigma_lag ~ dcauchy(0,1)
+),
+data=d1, iter=8000 , chains=1, cores=2)
+
+# plots and stuff
+plot(m3)
+dev.off()
+precis(m3, depth=2, warn=F)
+plot(precis(m3, depth=2,warn=F))
+
 # show density of probabilities
-post1 <- extract.samples(m2)
-dens( post1$bdLev , col="red", add=F, ylim=c(0,50))
-dens( post1$bt7mx, add=F)#ylim=c(0,1.5), xlim=c(-1.4,3.4))
-dens( post1$bt30mn, col=rangi2 , lwd=2 , add=TRUE )
+post3 <- extract.samples(m3)
+dens( post3$bdLev , col="red", add=F, ylim=c(0,50))
+dens( post3$bt7mx, add=F)#ylim=c(0,1.5), xlim=c(-1.4,3.4))
+dens( post3$bt30mn, col=rangi2 , lwd=2 , add=TRUE )
 
 
 ```
@@ -183,6 +216,159 @@ dens( post1$bt30mn, col=rangi2 , lwd=2 , add=TRUE )
 Looks like the model with `temp_7_max`, and `temp_30_mn` performed best, but not significantly so. The model with `ppt` and other temp values may be important. Ultimately we need to make some plots to figure this out. Also helps to create an ensemble model so that any one parameter gets "averaged" and avoids issues with trying lots of different models until you get one that "works".
 
 I can't figure out how to extract predictions from my ensemble model for a given set of variables, or how to make a residual plot. 
+
+### Regression
+
+```{r gaussian1}
+d1$Qmx_log <- log(d1$Q_max)
+d1$DOWY_log <- log(d1$DOWY)
+d1$deltLevEX<-exp(d1$deltLev)
+d1$WY<-coerce_index(d1$WY)
+d1$lagEM<-coerce_index(d1$lagEM)
+d1$obs <- 1:nrow(d1)
+d1$river<-coerce_index(d1$site)
+
+#start<-list(mu=mean(d1$DOWY), sigma=sd(d1$DOWY))
+
+m4 <- map2stan(
+  alist(
+    DOWY ~ dnorm( mu , sigma),
+    mu <- a + a_lag[lagEM] + bt7mx*temp_7_max + 
+      bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX +
+      bWair7*W_air_7_avg + bwyi*Index,
+    a ~ dnorm( 215 , 100 ) ,
+    a_lag[lagEM] ~ dnorm(a, sigma_lag),
+    bt7mx ~ dnorm( 11 , 10 ) ,
+    bt30mn ~ dnorm( 7 , 10 ) ,
+    bQCV ~ dnorm(5, 10),
+    bdLev ~ dnorm(1, 10),
+    bWair7 ~ dnorm(10,10),
+    bwyi ~ dnorm(5, 10),
+    sigma ~ dnorm(1, 10),
+    sigma_lag ~ dcauchy(0,1)
+  ),
+  data=d1, iter=8000 , chains=4, cores=2
+)
+
+plot(m4)
+precis(m4, depth=2)
+
+```
+
+```{r gaussian2}
+
+m5 <- map2stan(
+  alist(
+    DOWY ~ dnorm( mu , sigma),
+    mu <- a + a_lag[lagEM] + bt7mx*temp_7_max + 
+      bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX +
+      bWair7*W_air_7_avg + bwyi*Index + bPrecip*days_no_ppt,
+    a ~ dnorm( 215 , 100 ) ,
+    a_lag[lagEM] ~ dnorm(a, sigma_lag),
+    bt7mx ~ dnorm( 11 , 10 ) ,
+    bt30mn ~ dnorm( 7 , 10 ) ,
+    bQCV ~ dnorm(5, 10),
+    bdLev ~ dnorm(1, 10),
+    bWair7 ~ dnorm(10,10),
+    bPrecip ~ dnorm(5, 10),
+    bwyi ~ dnorm(5, 10),
+    sigma ~ dnorm(1, 10),
+    sigma_lag ~ dcauchy(0,1)
+  ),
+  data=d1, iter=8000 , chains=4, cores=2
+)
+
+plot(m5)
+precis(m5, depth=2)
+plot(precis(m4))
+plot(precis(m5))
+
+compare(m5,m4)
+
+post4<-extract.samples(m4)
+
+plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==1, rangi2, "red"))
+
+temp_7_max.seq <- seq( from=6 , to=18 , by=0.5)
+
+# use link to compute mu for each sample from posterior
+# and for each temp in temp.seq
+mu <- link( m4, 
+            data=data.frame(temp_7_max=temp_7_max.seq, 
+                            lagEM=1, temp_30_min=1,
+                            Q_CV=1, deltLevEX=1, W_air_7_avg=1,
+                            days_no_ppt=1, Index=10))
+str(mu)
+
+# use type="n" to hide raw data
+plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, NA), col=ifelse(d1$WY==1, rangi2, "red")) #type="n")
+
+# loop over samples and plot each mu value
+# for ( i in 1:500 )
+#     points( temp_7_max.seq , mu[i,] , pch=21 , col="gray", bg=col.alpha(rangi2,0.2) )
+
+# summarize the distribution of mu
+mu.mean <- apply( mu , 2 , mean )
+mu.HPDI89 <- apply( mu , 2 , HPDI , prob=0.89 )
+mu.HPDI97 <- apply( mu , 2 , HPDI , prob=0.97 )
+mu.HPDI67 <- apply( mu , 2 , HPDI , prob=0.67 )
+
+lines( temp_7_max.seq , mu.mean )
+shade( mu.HPDI97 , temp_7_max.seq, col = col.alpha("purple", 0.1) )
+shade( mu.HPDI89 , temp_7_max.seq) # plot a shaded region
+shade( mu.HPDI67 , temp_7_max.seq)
+
+d1$WY <- d1$WY+2010 # switch years back to regular
+
+# identify some points
+identify( x=d1$temp_7_max , y=d1$DOWY , 
+          labels=paste0(d1$site,"-",d1$WY), cex=0.8 )
+
+
+```
+#### ANOTHER PLOT
+
+```{r}
+deltLev.seq <- seq( from=0.74 , to=1.2 , length.out = 40)
+
+# use link to compute mu for each sample from posterior
+# and for each temp in temp.seq
+mu2 <- link( m4, 
+            data=data.frame(temp_7_max=1, 
+                            lagEM=1, temp_30_min=1,
+                            Q_CV=1, 
+                            deltLevEX=deltLev.seq, 
+                            W_air_7_avg=1,
+                            days_no_ppt=1, Index=10))
+str(mu2)
+
+# use type="n" to hide raw data
+plot( DOWY ~ log(deltLevEX) , data=d1, pch=ifelse(d1$lagEM==1, 16, NA), col=ifelse(d1$WY==2011, rangi2, "red"))
+
+# loop over samples and plot each mu value
+# for ( i in 1:40 )
+#     points( log(deltLev.seq) , mu2[i,] , pch=21 , col="gray", bg=col.alpha(rangi2,0.1) )
+
+# summarize the distribution of mu
+mu2.mean <- apply( mu2 , 2 , mean )
+mu2.HPDI89 <- apply( mu2 , 2 , HPDI , prob=0.89 )
+mu2.HPDI97 <- apply( mu2 , 2 , HPDI , prob=0.97 )
+mu2.HPDI67 <- apply( mu2 , 2 , HPDI , prob=0.67 )
+
+lines( log(deltLev.seq) , mu2.mean )
+shade( mu2.HPDI97 , log(deltLev.seq), col = col.alpha("purple", 0.1) )
+shade( mu2.HPDI89 , log(deltLev.seq)) 
+shade( mu2.HPDI67 , log(deltLev.seq), col=col.alpha("red", 0.1))
+
+# identify some points
+identify( x=log(d1$deltLevEX) , y=d1$DOWY , 
+          labels=paste0(d1$site,"-",d1$WY), cex=0.8 )
+
+```
+
+Maybe try an obs vs. modeled plot but use the regulated data...see how far off it is from the observed.
+
+
 
 
 #### Notes from Myfanwy 2017-05-24
