@@ -99,7 +99,7 @@ d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(),
                     -len_km, -starts_with("CDEC"), -station, -DOY,
                     -WYsum, -lev_7_avg, -Q_cfs, -Q_min, -Q_7_cfs) %>% 
     #filter(!site=="MFA") %>% 
-  filter(site=="NFY" | site=="NFA" | site=="RUB") %>%
+  filter(site=="NFY" | site=="NFA") %>%
   as.data.frame
 
 # RM NAs, add id and site to rownames:
@@ -125,46 +125,67 @@ d1s$WY <- coerce_index(d1s$WY) # for modeling
 d1s$lagEM <- coerce_index(d1s$lagEM) # for modeling
 d1s <- d1s %>% rename(river=site, wyind=Index) # rename some vars
 
+dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
+dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
+dowys<-data.frame("mon"=dowy_labs, "dowy"=dowy_breaks)
+
+# update cols
+d1$Qmx_log <- log(d1$Q_max)
+d1$DOWY_log <- log(d1$DOWY)
+d1s$DOWY <- d1$DOWY
+d1$deltLevEX<-exp(d1$deltLev)
+#d1$WY<-coerce_index(d1$WY)
+d1$lagEM<-coerce_index(d1$lagEM)
+d1$obs <- 1:nrow(d1)
+d1$river<-coerce_index(d1$site)
+
+# only the breeding points?
+d1 <- d1 %>% filter(breed==1)
+d1s <- d1s %>% filter(breed==1)
+
 ```
 
 ## Do Some Exploratory Modeling
 
-After initially trying logisitic regression, I think the better approach may be using a continuous variable (DOWY), and including breeding as a binary 1/0. It would allow a better sense of how relevant the effect is on breeding, alternatively I can model just the breeding points and see which are strongest predictors, then use only those variables for the mixed (0/1) dataset.
+After initially trying logistic regression, I think the better approach may be using a continuous variable (DOWY), and including breeding as a binary 1/0. It would allow a better sense of how relevant the effect is on breeding, alternatively I can model just the breeding points and see which are strongest predictors, then use only those variables for the mixed (0/1) dataset.
 
 ### Poisson Models
 
 ```{r Poisson}
+# dowy has to be positive
 
-# only the breeding points?
+# breeding only
 #d1 <- d1 %>% filter(breed==1)
 #d1s <- d1s %>% filter(breed==1)
-d1$DOWY_log <- log(d1$DOWY)
-d1$deltLevEX<-exp(d1$deltLev)
-d1$WY<-coerce_index(d1$WY)
-d1$lagEM<-coerce_index(d1$lagEM)
-d1$obs <- 1:nrow(d1)
-d1$site<-coerce_index(d1$site)
 
-# MOdel 1
+# Model 1: Varying Intercept for WY, breeding only
 m1<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX,
+    log(mu) <- a + a_wy[WY] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev,
     a ~ dnorm(5,10),
-    a_lag[lagEM] ~ dnorm(a, sigma_lag),
+    a_wy[WY] ~ dnorm(a, sigma_wy),
     c(bt7mx, bt30mn, bQCV, bdLev) ~ dnorm(1,10),
-    sigma_lag ~ dcauchy(1,1)
+    sigma_wy ~ dcauchy(1,1)
 ),
-data=d1, iter=6000 , chains=4, cores=2)
+data=d1s, iter=1e4, chains=4, cores=2)
 
 
 # plots and stuff
 plot(m1)
 dev.off()
 precis(m1, depth=2, warn=F)
-plot(precis(m2, depth=2,warn=F))
+plot(precis(m1, depth=2,warn=F))
+
+
+
+```
+
+```{r }
+
 
 # Model 2
+
 m2<- map2stan(
   alist(
     DOWY ~ dpois(mu),
@@ -252,6 +273,7 @@ m4 <- map2stan(
 
 plot(m4)
 precis(m4, depth=2)
+plot(precis(m4, depth=2))
 
 ```
 
@@ -280,10 +302,12 @@ m5 <- map2stan(
 
 plot(m5)
 precis(m5, depth=2)
-plot(precis(m4))
 plot(precis(m5))
-
 compare(m5,m4)
+
+```
+#### Plots
+```{r plots_m4_t7max}
 
 post4<-extract.samples(m4)
 
@@ -301,7 +325,12 @@ mu <- link( m4,
 str(mu)
 
 # use type="n" to hide raw data
-plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, NA), col=ifelse(d1$WY==1, rangi2, "red")) #type="n")
+plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==2011, rangi2, "red"), yaxt='n', ylab="")
+
+# add axes
+aty <- seq(183, 289, by = 15)
+labelsY<-dowys$mon[8:15]
+axis(side=2, at = aty, labels=labelsY, las=1)
 
 # loop over samples and plot each mu value
 # for ( i in 1:500 )
@@ -323,12 +352,11 @@ d1$WY <- d1$WY+2010 # switch years back to regular
 # identify some points
 identify( x=d1$temp_7_max , y=d1$DOWY , 
           labels=paste0(d1$site,"-",d1$WY), cex=0.8 )
-
-
 ```
-#### ANOTHER PLOT
 
-```{r}
+
+
+```{r plots_m4_levDelt}
 deltLev.seq <- seq( from=0.74 , to=1.2 , length.out = 40)
 
 # use link to compute mu for each sample from posterior
