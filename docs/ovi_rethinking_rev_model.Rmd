@@ -34,6 +34,10 @@ library(tidyverse)
 library(lubridate)
 
 load("data/master_dat_2011-2016.rda") 
+
+# fill the REG col across all rows
+#master_df$REG <- ifelse(master_df$site %in% c("MFA","MFY","RUB","SFY"), "R","U")
+
 load("data/flow_dv_cfs_2011_6sites.rda") # updated and merged flows:
 
 df <- master_df
@@ -80,6 +84,10 @@ rabo <- rabo %>% mutate(breed = 1, lagEM="d00")
 
 # make final logistic dataset, add 1/0 column
 rabo_logist <- rbind(rabo_LAGS, rabo)
+
+# fill the REG col across all rows
+#rabo_logist$REG <- ifelse(rabo_logist$site %in% c("MFA","MFY","RUB","SFY"), "R","U")
+
 #save(rabo_logist, file = "models/rabo_logistic_all_sites.rda")
 ```
 
@@ -91,9 +99,19 @@ library(tidyverse)
 library(lubridate)
 library(rethinking)
 
+# custom scale function
+cusScale <- function(x){
+  (x - mean(x))/sd(x)
+}
+
+unScale <- function(x, y){
+  (x * sd(y) + mean(y))
+}
+
+# LOAD DATA
 load("models/rabo_logistic_all_sites.rda")
 
-# Filter down data, use only unreg sites
+# UNREG: Filter down data, use only unreg sites
 d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(), 
                     -date, -EM_per_km, -REG, -(obs_strt:apr_jul),
                     -len_km, -starts_with("CDEC"), -station, -DOY,
@@ -104,37 +122,23 @@ d1 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(),
 
 # RM NAs, add id and site to rownames:
 d1 <- d1 %>% filter(!is.na(temp_30_min))
-d1_rownames<- paste0(d1$site, "-",d1$WY, "-", seq(1:nrow(d1)))
+#d1_rownames<- paste0(d1$site, "-",d1$WY, "-", seq(1:nrow(d1)))
 d1$site <- as.factor(d1$site)
 d1$lagEM <- as.factor(d1$lagEM)
 
-# custom scale function
-cusScale <- function(x){
-  (x - mean(x))/sd(x)
-}
-
-unScale <- function(x, y){
-  (x * sd(y) + mean(y))
-}
-
 # scale all data and rebind site and breed info:
 d1s <- d1
-d1s[,c(4:29)] <- apply(d1[,c(4:29)], 2, cusScale) # center and scale
+d1s[,c(4:30)] <- apply(d1[,c(4:30)], 2, cusScale) # center and scale
 d1s$site <- coerce_index(d1s$site) # for modeling
-d1s$WY <- coerce_index(d1s$WY) # for modeling
+#d1s$WY <- coerce_index(d1s$WY) # for modeling
 d1s$lagEM <- coerce_index(d1s$lagEM) # for modeling
-d1s <- d1s %>% rename(river=site, wyind=Index) # rename some vars
-
-dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
-dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
-dowys<-data.frame("mon"=dowy_labs, "dowy"=dowy_breaks)
+#d1s <- d1s %>% rename(river=site, wyind=Index) # rename some vars
 
 # update cols
 d1$Qmx_log <- log(d1$Q_max)
 d1$DOWY_log <- log(d1$DOWY)
 d1s$DOWY <- d1$DOWY
 d1$deltLevEX<-exp(d1$deltLev)
-#d1$WY<-coerce_index(d1$WY)
 d1$lagEM<-coerce_index(d1$lagEM)
 d1$obs <- 1:nrow(d1)
 d1$river<-coerce_index(d1$site)
@@ -142,6 +146,48 @@ d1$river<-coerce_index(d1$site)
 # only the breeding points?
 d1 <- d1 %>% filter(breed==1)
 d1s <- d1s %>% filter(breed==1)
+
+
+# ALL DATA: Filter down data, use only reg sites
+d2 <- dplyr::select(rabo_logist, site, breed, lagEM, DOWY, everything(), 
+                    -date, -EM_per_km, -(obs_strt:apr_jul),
+                    -len_km, -starts_with("CDEC"), -station, -DOY,
+                    -WYsum, -lev_7_avg, -Q_cfs, -Q_min, -Q_7_cfs) %>% 
+  filter(!site=="MFA", !site=="MFY") %>% #, !site=="NFY", !site=="NFA") %>%
+  as.data.frame
+
+# RM NAs, add id and site to rownames:
+d2 <- d2 %>% filter(!is.na(temp_30_min)) #rm the NAs
+d2$site <- factor(d2$site)
+d2$REG_id <-ifelse(d2$REG=="R",1,0)
+d2$lagEM <- as.factor(d2$lagEM)
+d2 <- d2 %>% select(-REG)
+
+# scale all data and rebind site and breed info:
+d2s <- d2
+d2s[,c(5:30)] <- apply(d2[,c(5:30)], 2, cusScale) # center and scale
+d2s$site <- coerce_index(d2s$site) # for modeling
+d2s$lagEM <- coerce_index(d2s$lagEM) # for modeling
+
+# update cols
+d2$Qmx_log <- log(d2$Q_max)
+d2$DOWY_log <- log(d2$DOWY)
+d2s$DOWY <- d2$DOWY
+d2$deltLevEX<-exp(d2$deltLev)
+d2$lagEM<-coerce_index(d2$lagEM)
+d2$obs <- 1:nrow(d2)
+d2$river<-coerce_index(d2$site)
+d2s$WY_id <- coerce_index(d2$WY)
+
+# only the breeding points?
+d2 <- d2 %>% filter(breed==1)
+d2s <- d2s %>% filter(breed==1)
+
+
+
+dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
+dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
+dowys<-data.frame("mon"=dowy_labs, "dowy"=dowy_breaks)
 
 ```
 
@@ -151,52 +197,77 @@ After initially trying logistic regression, I think the better approach may be u
 
 ### Poisson Models
 
-```{r Poisson}
+```{r Poisson1}
 # dowy has to be positive
-
+#d2s$WY_id <- coerce_index(d2$WY)
 # breeding only
 #d1 <- d1 %>% filter(breed==1)
 #d1s <- d1s %>% filter(breed==1)
 
-# Model 1: Varying Intercept for WY, breeding only
+# Model 1: Varying Intercept for WY, breeding only, all sites
 m1<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_wy[WY] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev,
-    a ~ dnorm(5,10),
-    a_wy[WY] ~ dnorm(a, sigma_wy),
-    c(bt7mx, bt30mn, bQCV, bdLev) ~ dnorm(1,10),
-    sigma_wy ~ dcauchy(1,1)
+    log(mu) <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id,
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt30mn, bQCV, bdLev, bwyi, bdQ, bReg) ~ dnorm(0,10),
+    sigma_wy ~ dexp(1)
 ),
-data=d1s, iter=1e4, chains=4, cores=2)
+data=d2s, iter=1e4, chains=4, cores=2)
 
 
 # plots and stuff
 plot(m1)
 dev.off()
+#pairs(m1)
 precis(m1, depth=2, warn=F)
-plot(precis(m1, depth=2,warn=F))
-
-
-
+plot(precis(m1, pars = c("a_wy","bt7mx", "bt30mn", "blevCV", "bQCV", "bdLev", "bwyi", "bdQ",
+                   "bReg","btCV", "sigma_wy"),  depth=2,warn=F))
 ```
 
-```{r }
+So this means the model predicts a decrease in `DOWY` when `REG`==1, and an increase in `DOWY` with increasing `Water Index`. Interestingly, this model shows Rhats > 1, so something odd is going on here, and perhaps we should reduce the dnorm(mean back to 1 or 0). Here's the output from the **First Run** (`a ~ dnorm(0, 10)` and `a_site[site] ~ dnorm(a, sigma_site)`.
 
 
-# Model 2
+ > Changing the a ~ dnorm(0, 10) for the intercept made a big difference. Better Rhats and smaller SD across coefficients
+
+ > Finally, changing the varying intercept to adapt not to the general intercept, but to 0 and the sigma_site appears to help.
+
+``` 
+           Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
+a         5.44   0.04       5.39       5.49  7523    1
+a_wy[1]   0.01   0.06      -0.06       0.09  6713    1
+a_wy[2]  -0.02   0.04      -0.08       0.03  5813    1
+a_wy[3]  -0.02   0.04      -0.07       0.04  6065    1
+a_wy[4]   0.02   0.04      -0.04       0.08  6192    1
+a_wy[5]   0.00   0.04      -0.06       0.06  7257    1
+a_wy[6]   0.01   0.04      -0.04       0.07  7729    1
+bt7mx     0.01   0.02      -0.02       0.05  7090    1
+bt30mn   -0.01   0.02      -0.03       0.02  9525    1
+bQCV      0.01   0.02      -0.02       0.05  8261    1
+bdLev    -0.01   0.03      -0.05       0.04  6198    1
+bwyi      0.06   0.03       0.02       0.10  6364    1
+bdQ       0.01   0.02      -0.03       0.04  7078    1
+bReg     -0.04   0.03      -0.10       0.01  7682    1
+sigma_wy  0.04   0.04       0.00       0.09  1659    1
+```
+
+
+```{r Poisson2}
+
+# Model 2: scaled
 
 m2<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_site[site] + bt7mx*temp_7_max +
-      bt7mxIND*(temp_7_max+Index),
+    log(mu) <- a + a_site[site] + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bReg*REG_id + bW7air*W_air_7_avg + bdppt*days_no_ppt,
     a ~ dnorm(0,10),
-    a_site[site] ~ dnorm(a,sigma_site),
-    c(bt7mx, bt7mxIND) ~ dnorm(1,10),
-    sigma_site ~ dcauchy(0,2)
+    a_site[site] ~ dnorm(0, sigma_site),
+    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bReg, bW7air, bdppt) ~ dnorm(0,10),
+    sigma_site ~ dexp(1)
 ),
-data=d1, iter=8000 , chains=4, cores=2)
+data=d2s, iter=1e4, chains=4, cores=2)
+
 
 
 # plots and stuff
@@ -205,34 +276,40 @@ dev.off()
 precis(m2, depth=2, warn=F)
 plot(precis(m2, depth=2,warn=F))
 
+compare(m1, m2)
+```
 
-m3 <- map2stan(
+```{r poisson3}
+
+# Model 3: scaled
+
+m3<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_lag[lagEM] + bt7mx*temp_7_max + bt30mn*temp_30_min +
-      bQCV*Q_CV + bdLev*deltLevEX + bQmx*Q_max + bWairmx*W_air_max +
-      bwy*WY,
-    a ~ dnorm(10,10),
-    a_lag[lagEM] ~ dnorm(a,sigma_lag),
-    c(bt7mx, bt30mn, bQCV, bdLev, bQmx, bWairmx, bwy) ~ dnorm(1,10),
-    sigma_lag ~ dcauchy(0,1)
+    log(mu) <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + 
+      bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bdQ, bReg, btCV) ~ dnorm(0,10),
+    sigma_wy ~ dexp(1)
 ),
-data=d1, iter=8000 , chains=1, cores=2)
+data=d2s, iter=1e4, chains=4, cores=2)
+
+
 
 # plots and stuff
 plot(m3)
 dev.off()
 precis(m3, depth=2, warn=F)
-plot(precis(m3, depth=2,warn=F))
+plot(precis(m3, pars = c("a_wy","bt7mx", "bt30mn", "blevCV", "bQCV", "bdLev", "bwyi", "bdQ",
+                   "bReg","btCV", "sigma_wy"), depth=2, warn=F))
+abline(v=0, lty=2)
 
-# show density of probabilities
-post3 <- extract.samples(m3)
-dens( post3$bdLev , col="red", add=F, ylim=c(0,50))
-dens( post3$bt7mx, add=F)#ylim=c(0,1.5), xlim=c(-1.4,3.4))
-dens( post3$bt30mn, col=rangi2 , lwd=2 , add=TRUE )
-
+compare(m1, m3)
 
 ```
+
+
 
 Looks like the model with `temp_7_max`, and `temp_30_mn` performed best, but not significantly so. The model with `ppt` and other temp values may be important. Ultimately we need to make some plots to figure this out. Also helps to create an ensemble model so that any one parameter gets "averaged" and avoids issues with trying lots of different models until you get one that "works".
 
@@ -241,39 +318,33 @@ I can't figure out how to extract predictions from my ensemble model for a given
 ### Regression
 
 ```{r gaussian1}
-d1$Qmx_log <- log(d1$Q_max)
-d1$DOWY_log <- log(d1$DOWY)
-d1$deltLevEX<-exp(d1$deltLev)
-d1$WY<-coerce_index(d1$WY)
-d1$lagEM<-coerce_index(d1$lagEM)
-d1$obs <- 1:nrow(d1)
-d1$river<-coerce_index(d1$site)
-
-#start<-list(mu=mean(d1$DOWY), sigma=sd(d1$DOWY))
 
 m4 <- map2stan(
   alist(
     DOWY ~ dnorm( mu , sigma),
-    mu <- a + a_lag[lagEM] + bt7mx*temp_7_max + 
-      bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX +
-      bWair7*W_air_7_avg + bwyi*Index,
-    a ~ dnorm( 215 , 100 ) ,
-    a_lag[lagEM] ~ dnorm(a, sigma_lag),
+    mu <- a + a_site[site] + bt7mx*temp_7_max + 
+      bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev +  blevCV*lev_CV + bwyi*Index + 
+      bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
+    a ~ dnorm(0 , 100 ) ,
+    a_site[site] ~ dnorm(a, sigma_site),
     bt7mx ~ dnorm( 11 , 10 ) ,
     bt30mn ~ dnorm( 7 , 10 ) ,
     bQCV ~ dnorm(5, 10),
     bdLev ~ dnorm(1, 10),
-    bWair7 ~ dnorm(10,10),
-    bwyi ~ dnorm(5, 10),
+    blevCV ~ dnorm(2,10),
+    bwyi ~ dnorm(6, 10),
+    c(bdQ, bReg) ~ dnorm(0, 10),
+    btCV ~ dnorm(8, 10),
     sigma ~ dnorm(1, 10),
-    sigma_lag ~ dcauchy(0,1)
+    sigma_site ~ dcauchy(0,1)
   ),
-  data=d1, iter=8000 , chains=4, cores=2
+  data=d2, iter=8000 , chains=4, cores=2
 )
 
 plot(m4)
-precis(m4, depth=2)
-plot(precis(m4, depth=2))
+dev.off()
+precis(m4, depth=2, warn=F)
+plot(precis(m4, depth=1))
 
 ```
 
@@ -282,54 +353,51 @@ plot(precis(m4, depth=2))
 m5 <- map2stan(
   alist(
     DOWY ~ dnorm( mu , sigma),
-    mu <- a + a_lag[lagEM] + bt7mx*temp_7_max + 
-      bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLevEX +
-      bWair7*W_air_7_avg + bwyi*Index + bPrecip*days_no_ppt,
-    a ~ dnorm( 215 , 100 ) ,
-    a_lag[lagEM] ~ dnorm(a, sigma_lag),
-    bt7mx ~ dnorm( 11 , 10 ) ,
-    bt30mn ~ dnorm( 7 , 10 ) ,
-    bQCV ~ dnorm(5, 10),
-    bdLev ~ dnorm(1, 10),
-    bWair7 ~ dnorm(10,10),
-    bPrecip ~ dnorm(5, 10),
-    bwyi ~ dnorm(5, 10),
-    sigma ~ dnorm(1, 10),
-    sigma_lag ~ dcauchy(0,1)
+    mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + 
+      bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bdQ, bReg, btCV) ~ dnorm(0,10),
+    sigma ~ dnorm(0,10),
+    sigma_wy ~ dcauchy(0,1)
   ),
-  data=d1, iter=8000 , chains=4, cores=2
+  data=d2s, iter=8000 , chains=4, cores=2
 )
 
 plot(m5)
-precis(m5, depth=2)
-plot(precis(m5))
-compare(m5,m4)
+dev.off()
+precis(m5, depth=2, warn=F)
+plot(precis(m5, depth=1))
+
+compare(m1, m3, m5)
 
 ```
+ So best model is Gaussian Model 5!
 #### Plots
-```{r plots_m4_t7max}
 
-post4<-extract.samples(m4)
+```{r plots_m5_t7max}
 
-plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==1, rangi2, "red"))
+post4<-extract.samples(m5)
 
-temp_7_max.seq <- seq( from=6 , to=18 , by=0.5)
+plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==2011, rangi2, "red"))
+
+temp_7_max.seq <- seq( from=0 , to=18 , by=0.5)
 
 # use link to compute mu for each sample from posterior
 # and for each temp in temp.seq
-mu <- link( m4, 
+mu <- link( m5, 
             data=data.frame(temp_7_max=temp_7_max.seq, 
-                            lagEM=1, temp_30_min=1,
-                            Q_CV=1, deltLevEX=1, W_air_7_avg=1,
-                            days_no_ppt=1, Index=10))
-str(mu)
+                            temp_30_min=0, lev_CV=0, WY_id=3,
+                            Q_CV=0, deltLev=0, Index=0,
+                            deltQ=0, REG_id=0, temp_CV=0))
 
 # use type="n" to hide raw data
-plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==2011, rangi2, "red"), yaxt='n', ylab="")
+plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==2011, rangi2, "red"), yaxt='n', ylab="", xlim=c(4,18))
 
 # add axes
-aty <- seq(183, 289, by = 15)
-labelsY<-dowys$mon[8:15]
+aty <- seq(213, 289, by = 15)
+labelsY<-dowys$mon[10:15]
+#axis(side=2, at = aty, las=1)
 axis(side=2, at = aty, labels=labelsY, las=1)
 
 # loop over samples and plot each mu value
@@ -347,7 +415,7 @@ shade( mu.HPDI97 , temp_7_max.seq, col = col.alpha("purple", 0.1) )
 shade( mu.HPDI89 , temp_7_max.seq) # plot a shaded region
 shade( mu.HPDI67 , temp_7_max.seq)
 
-d1$WY <- d1$WY+2010 # switch years back to regular
+#d1$WY <- d1$WY+2010 # switch years back to regular
 
 # identify some points
 identify( x=d1$temp_7_max , y=d1$DOWY , 
@@ -356,12 +424,12 @@ identify( x=d1$temp_7_max , y=d1$DOWY ,
 
 
 
-```{r plots_m4_levDelt}
+```{r plots_m5_levDelt}
 deltLev.seq <- seq( from=0.74 , to=1.2 , length.out = 40)
 
 # use link to compute mu for each sample from posterior
 # and for each temp in temp.seq
-mu2 <- link( m4, 
+mu2 <- link( m5, 
             data=data.frame(temp_7_max=1, 
                             lagEM=1, temp_30_min=1,
                             Q_CV=1, 
