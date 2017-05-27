@@ -144,8 +144,8 @@ d1$obs <- 1:nrow(d1)
 d1$river<-coerce_index(d1$site)
 
 # only the breeding points?
-d1 <- d1 %>% filter(breed==1)
-d1s <- d1s %>% filter(breed==1)
+#d1 <- d1 %>% filter(breed==1)
+#d1s <- d1s %>% filter(breed==1)
 
 
 # ALL DATA: Filter down data, use only reg sites
@@ -180,10 +180,8 @@ d2$river<-coerce_index(d2$site)
 d2s$WY_id <- coerce_index(d2$WY)
 
 # only the breeding points?
-d2 <- d2 %>% filter(breed==1)
-d2s <- d2s %>% filter(breed==1)
-
-
+#d2 <- d2 %>% filter(breed==1)
+#d2s <- d2s %>% filter(breed==1)
 
 dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
 dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
@@ -197,7 +195,7 @@ After initially trying logistic regression, I think the better approach may be u
 
 ### Poisson Models
 
-```{r Poisson1}
+```{r poisson1}
 # dowy has to be positive
 #d2s$WY_id <- coerce_index(d2$WY)
 # breeding only
@@ -208,13 +206,14 @@ After initially trying logistic regression, I think the better approach may be u
 m1<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id,
+    log(mu) <- a + a_wy[WY_id] + bLEM*lagEM + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
     a ~ dnorm(0, 10),
     a_wy[WY_id] ~ dnorm(0, sigma_wy),
-    c(bt7mx, bt30mn, bQCV, bdLev, bwyi, bdQ, bReg) ~ dnorm(0,10),
-    sigma_wy ~ dexp(1)
+    bLEM ~ dnorm(2, 10),
+    c(bt7mx, bt30mn, bQCV, bdLev, bwyi, bdQ, bReg, btCV) ~ dnorm(0,10),
+    sigma_wy ~ dcauchy(0,1)
 ),
-data=d2s, iter=1e4, chains=4, cores=2)
+data=d2s, iter=1e4, chains=3, cores=2)
 
 
 # plots and stuff
@@ -234,41 +233,42 @@ So this means the model predicts a decrease in `DOWY` when `REG`==1, and an incr
  > Finally, changing the varying intercept to adapt not to the general intercept, but to 0 and the sigma_site appears to help.
 
 ``` 
-           Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
-a         5.44   0.04       5.39       5.49  7523    1
-a_wy[1]   0.01   0.06      -0.06       0.09  6713    1
-a_wy[2]  -0.02   0.04      -0.08       0.03  5813    1
-a_wy[3]  -0.02   0.04      -0.07       0.04  6065    1
-a_wy[4]   0.02   0.04      -0.04       0.08  6192    1
-a_wy[5]   0.00   0.04      -0.06       0.06  7257    1
-a_wy[6]   0.01   0.04      -0.04       0.07  7729    1
-bt7mx     0.01   0.02      -0.02       0.05  7090    1
-bt30mn   -0.01   0.02      -0.03       0.02  9525    1
-bQCV      0.01   0.02      -0.02       0.05  8261    1
-bdLev    -0.01   0.03      -0.05       0.04  6198    1
-bwyi      0.06   0.03       0.02       0.10  6364    1
-bdQ       0.01   0.02      -0.03       0.04  7078    1
-bReg     -0.04   0.03      -0.10       0.01  7682    1
-sigma_wy  0.04   0.04       0.00       0.09  1659    1
+          Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
+a         5.48   0.04       5.42       5.53  8453    1
+a_wy[1]   0.02   0.06      -0.07       0.10  8056    1
+a_wy[2]  -0.04   0.03      -0.09       0.00  8760    1
+a_wy[3]  -0.03   0.03      -0.07       0.02  8895    1
+a_wy[4]   0.02   0.04      -0.03       0.08  7641    1
+a_wy[5]   0.01   0.04      -0.05       0.07  7785    1
+a_wy[6]   0.02   0.03      -0.02       0.07  8715    1
+bLEM     -0.03   0.01      -0.05      -0.02 13800    1
+bt7mx     0.01   0.01      -0.01       0.03 14614    1
+bt30mn   -0.01   0.01      -0.03       0.01 18636    1
+bQCV      0.00   0.01      -0.01       0.02 18011    1
+bdLev     0.00   0.01      -0.02       0.01 16095    1
+bwyi      0.07   0.03       0.03       0.11  7893    1
+bdQ       0.00   0.01      -0.02       0.01 16579    1
+bReg     -0.04   0.01      -0.06      -0.01 20000    1
+btCV      0.00   0.01      -0.02       0.01 20000    1
+sigma_wy  0.05   0.04       0.01       0.10  4132    1
 ```
 
 
-```{r Poisson2}
+```{r poisson2}
 
 # Model 2: scaled
 
 m2<- map2stan(
   alist(
     DOWY ~ dpois(mu),
-    log(mu) <- a + a_site[site] + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bReg*REG_id + bW7air*W_air_7_avg + bdppt*days_no_ppt,
+    log(mu) <- a + a_site[site] + bLEM*lagEM + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bReg*REG_id + btCV*temp_CV,
     a ~ dnorm(0,10),
     a_site[site] ~ dnorm(0, sigma_site),
-    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bReg, bW7air, bdppt) ~ dnorm(0,10),
-    sigma_site ~ dexp(1)
+    bLEM ~ dnorm(2, 10),
+    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bReg, btCV) ~ dnorm(0,10),
+    sigma_site ~ dcauchy(0,1)
 ),
-data=d2s, iter=1e4, chains=4, cores=2)
-
-
+data=d2s, iter=1e4, chains=3, cores=2)
 
 # plots and stuff
 plot(m2)
@@ -276,6 +276,21 @@ dev.off()
 precis(m2, depth=2, warn=F)
 plot(precis(m2, depth=2,warn=F))
 
+# using BROOM & TIDY!
+library(broom)
+tidy(m2@stanfit)
+td_mean <- tidy(m2@stanfit,conf.int = TRUE, rhat = T, ess = T)
+td_median<-tidy(m2@stanfit,conf.int = TRUE, rhat = T, ess = T,
+     estimate.method = "median")
+tds <- rbind(mutate(td_mean, method = "mean"),
+               mutate(td_median, method = "median")) %>% mutate(estimate=round(estimate, 3))
+head(tds)
+# plot
+ggplot(tds[tds$term!="dev" & tds$term!="a",], aes(estimate, term)) +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+    geom_point(aes(color = method))
+
+# compare models
 compare(m1, m2)
 ```
 
@@ -310,23 +325,24 @@ compare(m1, m3)
 ```
 
 
-
 Looks like the model with `temp_7_max`, and `temp_30_mn` performed best, but not significantly so. The model with `ppt` and other temp values may be important. Ultimately we need to make some plots to figure this out. Also helps to create an ensemble model so that any one parameter gets "averaged" and avoids issues with trying lots of different models until you get one that "works".
 
 I can't figure out how to extract predictions from my ensemble model for a given set of variables, or how to make a residual plot. 
 
 ### Regression
 
-```{r gaussian1}
+```{r gaussian-m4}
 
 m4 <- map2stan(
   alist(
     DOWY ~ dnorm( mu , sigma),
     mu <- a + a_site[site] + bt7mx*temp_7_max + 
-      bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev +  blevCV*lev_CV + bwyi*Index + 
-      bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
-    a ~ dnorm(0 , 100 ) ,
-    a_site[site] ~ dnorm(a, sigma_site),
+      bt30mn*temp_30_min + bQCV*Q_CV + 
+      bdLev*deltLev +  blevCV*lev_CV + bwyi*Index + 
+      bLEM*lagEM + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
+    a ~ dnorm(0 , 10) ,
+    a_site[site] ~ dnorm(0, sigma_site),
+    bLEM ~ dnorm(2, 10),
     bt7mx ~ dnorm( 11 , 10 ) ,
     bt30mn ~ dnorm( 7 , 10 ) ,
     bQCV ~ dnorm(5, 10),
@@ -338,7 +354,7 @@ m4 <- map2stan(
     sigma ~ dnorm(1, 10),
     sigma_site ~ dcauchy(0,1)
   ),
-  data=d2, iter=8000 , chains=4, cores=2
+  data=d2, iter=1e4 , chains=3, cores=2
 )
 
 plot(m4)
@@ -348,123 +364,178 @@ plot(precis(m4, depth=1))
 
 ```
 
+Very similar to model 5 but wider and messier.
+
+```
+             Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
+a          169.69  11.18     151.89     187.45  4043    1
+a_site[1]   -0.82   2.24      -4.53       1.90  5408    1
+a_site[2]    1.50   2.47      -1.50       5.16  3495    1
+a_site[3]   -1.44   2.51      -5.12       1.78  3812    1
+a_site[4]    0.89   2.23      -1.94       4.46  6520    1
+bLEM        -6.54   0.78      -7.77      -5.28  5937    1
+bt7mx        0.76   0.66      -0.30       1.81  5625    1
+bt30mn       1.04   0.75      -0.11       2.29 10328    1
+bQCV         0.06   0.20      -0.26       0.36 10106    1
+bdLev        2.65   8.65     -11.23      16.31 12971    1
+blevCV       1.32   0.47       0.54       2.05 10589    1
+bwyi         7.73   0.47       6.99       8.50  7941    1
+bdQ        -10.45   6.46     -20.38       0.28 11669    1
+bReg        -7.44   3.08     -12.07      -2.97  5210    1
+btCV        -0.04   0.23      -0.41       0.32 12987    1
+sigma        7.77   0.60       6.83       8.69 12340    1
+sigma_site   2.27   2.20       0.05       4.55  2370    1
+```
+
+
 ```{r gaussian2}
 
 m5 <- map2stan(
   alist(
     DOWY ~ dnorm( mu , sigma),
-    mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + 
-      bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
+    mu <- a + a_site[site] + bt7mx*temp_7_max +
+      bt30mn*temp_30_min + blevCV*lev_CV + 
+      bQCV*Q_CV + bdLev*deltLev + bwyi*Index + 
+      bLEM*lagEM + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
     a ~ dnorm(0, 10),
-    a_wy[WY_id] ~ dnorm(0, sigma_wy),
-    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bdQ, bReg, btCV) ~ dnorm(0,10),
+    a_site[site] ~ dnorm(0, sigma_site),
+    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bdQ, bReg, btCV, bLEM) ~ dnorm(0,10),
     sigma ~ dnorm(0,10),
-    sigma_wy ~ dcauchy(0,1)
+    sigma_site ~ dcauchy(0,1)
   ),
-  data=d2s, iter=8000 , chains=4, cores=2
+  data=d2s, iter=1e4 , chains=3, cores=2
 )
 
 plot(m5)
 dev.off()
 precis(m5, depth=2, warn=F)
-plot(precis(m5, depth=1))
+plot(precis(m5, depth=2))
 
-compare(m1, m3, m5)
+compare(m1, m2, m4, m5)
 
 ```
- So best model is Gaussian Model 5!
+
+So best model is Gaussian Model 5!
+
+```
+             Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
+a            1.98  10.00     -14.40      17.61  4780    1
+a_site[1]  230.71  10.46     212.93     246.35  4589    1
+a_site[2]  235.52  10.29     218.93     251.86  4590    1
+a_site[3]  221.39  14.51     197.89     243.83  4669    1
+a_site[4]  226.73  14.42     203.59     249.41  4695    1
+bt7mx        2.11   1.36      -0.04       4.29  8834    1
+bt30mn       1.69   1.04       0.07       3.37 15000    1
+blevCV       2.68   1.00       1.12       4.32 13570    1
+bQCV         0.91   1.03      -0.75       2.53 12174    1
+bdLev        1.10   1.03      -0.50       2.78 10430    1
+bwyi        15.93   0.95      14.42      17.44 12178    1
+bdQ         -2.36   1.06      -4.10      -0.71  9948    1
+bReg         1.02   9.97     -14.99      16.73  8858    1
+btCV        -0.38   0.87      -1.81       0.96 15000    1
+bLEM        -6.17   0.78      -7.41      -4.94  9892    1
+sigma        7.67   0.59       6.74       8.58 15000    1
+sigma_site 242.15 101.03     115.51     359.43  9058    1
+
+```
+
 #### Plots
 
 ```{r plots_m5_t7max}
+post4<-extract.samples(m4)
+post5<-extract.samples(m5)
 
-post4<-extract.samples(m5)
+plot( DOWY ~ temp_7_max , data=d2, pch=ifelse(d2$lagEM==1, 16, 21), col=ifelse(d2$REG_id==0, rangi2, "red"))
 
-plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==2011, rangi2, "red"))
-
-temp_7_max.seq <- seq( from=0 , to=18 , by=0.5)
+temp_7_max.seq <- seq( from=6 , to=18 , by=0.5)
 
 # use link to compute mu for each sample from posterior
 # and for each temp in temp.seq
-mu <- link( m5, 
-            data=data.frame(temp_7_max=temp_7_max.seq, 
-                            temp_30_min=0, lev_CV=0, WY_id=3,
-                            Q_CV=0, deltLev=0, Index=0,
+mu4 <- link( m4, 
+            data=data.frame(temp_7_max=temp_7_max.seq,lagEM=1, 
+                            temp_30_min=8, lev_CV=0, site=1,
+                            Q_CV=0, deltLev=0, Index=6,
+                            deltQ=0, REG_id=0, temp_CV=0))
+mu5 <- link( m5, 
+            data=data.frame(temp_7_max=temp_7_max.seq,lagEM=1, 
+                            temp_30_min=8, lev_CV=0, site=1,
+                            Q_CV=0, deltLev=0, Index=6,
                             deltQ=0, REG_id=0, temp_CV=0))
 
 # use type="n" to hide raw data
-plot( DOWY ~ temp_7_max , data=d1, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==2011, rangi2, "red"), yaxt='n', ylab="", xlim=c(4,18))
+plot( DOWY ~ temp_7_max , data=d2, pch=ifelse(d2$lagEM==1, 16, 21), col=ifelse(d2$WY==2011, rangi2, "red"), yaxt='n', ylab="", xlim=c(6,18))
 
 # add axes
-aty <- seq(213, 289, by = 15)
-labelsY<-dowys$mon[10:15]
+aty <- seq(183, 289, by = 15)
+labelsY<-dowys$mon[8:15]
 #axis(side=2, at = aty, las=1)
 axis(side=2, at = aty, labels=labelsY, las=1)
 
-# loop over samples and plot each mu value
-# for ( i in 1:500 )
-#     points( temp_7_max.seq , mu[i,] , pch=21 , col="gray", bg=col.alpha(rangi2,0.2) )
+# loop over samples and plot each mu4 value
+# for ( i in 1:50 )
+#     lines( temp_7_max.seq , mu4[i,] , pch=21 , col="gray", bg=col.alpha(rangi2,0.2) )
 
-# summarize the distribution of mu
-mu.mean <- apply( mu , 2 , mean )
-mu.HPDI89 <- apply( mu , 2 , HPDI , prob=0.89 )
-mu.HPDI97 <- apply( mu , 2 , HPDI , prob=0.97 )
-mu.HPDI67 <- apply( mu , 2 , HPDI , prob=0.67 )
 
-lines( temp_7_max.seq , mu.mean )
-shade( mu.HPDI97 , temp_7_max.seq, col = col.alpha("purple", 0.1) )
-shade( mu.HPDI89 , temp_7_max.seq) # plot a shaded region
-shade( mu.HPDI67 , temp_7_max.seq)
+# summarize the distribution of mu4
+mu4.mean <- apply( mu4 , 2 , mean )
+mu4.HPDI89 <- apply( mu4 , 2 , HPDI , prob=0.89 )
+mu4.HPDI97 <- apply( mu4 , 2 , HPDI , prob=0.97 )
+mu4.HPDI67 <- apply( mu4 , 2 , HPDI , prob=0.67 )
 
-#d1$WY <- d1$WY+2010 # switch years back to regular
+lines( temp_7_max.seq , mu4.mean )
+shade( mu4.HPDI97 , temp_7_max.seq)
+shade( mu4.HPDI89 , temp_7_max.seq)
+shade( mu4.HPDI67 , temp_7_max.seq)
+
 
 # identify some points
-identify( x=d1$temp_7_max , y=d1$DOWY , 
-          labels=paste0(d1$site,"-",d1$WY), cex=0.8 )
+identify( x=d2$temp_7_max , y=d2$DOWY , 
+          labels=paste0(d1$site,"-",d2$WY), cex=0.8 )
 ```
 
 
 
-```{r plots_m5_levDelt}
-deltLev.seq <- seq( from=0.74 , to=1.2 , length.out = 40)
+```{r plots_m4_levDelt}
+deltLev.seq <- seq( from=-5 , to=2.3 , length.out = 40)
+#unScale(deltLev.seq, d2$deltLev)
 
 # use link to compute mu for each sample from posterior
 # and for each temp in temp.seq
-mu2 <- link( m5, 
-            data=data.frame(temp_7_max=1, 
-                            lagEM=1, temp_30_min=1,
-                            Q_CV=1, 
-                            deltLevEX=deltLev.seq, 
-                            W_air_7_avg=1,
-                            days_no_ppt=1, Index=10))
-str(mu2)
+mu4 <- link( m4, 
+            data=data.frame(temp_7_max=10, lagEM=1, 
+                            temp_30_min=8, lev_CV=0, site=4,
+                            Q_CV=0, Index=6,
+                            deltQ=0, REG_id=0, temp_CV=0,
+                            deltLev=deltLev.seq))
 
 # use type="n" to hide raw data
-plot( DOWY ~ log(deltLevEX) , data=d1, pch=ifelse(d1$lagEM==1, 16, NA), col=ifelse(d1$WY==2011, rangi2, "red"))
+plot( DOWY ~ deltLev , data=d2, pch=ifelse(d2$lagEM==1, 16, NA), col=ifelse(d2$WY==2011, rangi2, "red"))
 
 # loop over samples and plot each mu value
-# for ( i in 1:40 )
-#     points( log(deltLev.seq) , mu2[i,] , pch=21 , col="gray", bg=col.alpha(rangi2,0.1) )
+for ( i in 1:40 )
+    lines( deltLev.seq , mu4[i,],
+           col=col.alpha(rangi2,0.2) )# 10C
 
 # summarize the distribution of mu
-mu2.mean <- apply( mu2 , 2 , mean )
-mu2.HPDI89 <- apply( mu2 , 2 , HPDI , prob=0.89 )
-mu2.HPDI97 <- apply( mu2 , 2 , HPDI , prob=0.97 )
-mu2.HPDI67 <- apply( mu2 , 2 , HPDI , prob=0.67 )
+mu4.mean <- apply( mu4 , 2 , mean )
+mu4.HPDI89 <- apply( mu4 , 2 , HPDI , prob=0.89 )
+mu4.HPDI97 <- apply( mu4 , 2 , HPDI , prob=0.97 )
+mu4.HPDI67 <- apply( mu4 , 2 , HPDI , prob=0.67 )
 
-lines( log(deltLev.seq) , mu2.mean )
-shade( mu2.HPDI97 , log(deltLev.seq), col = col.alpha("purple", 0.1) )
-shade( mu2.HPDI89 , log(deltLev.seq)) 
-shade( mu2.HPDI67 , log(deltLev.seq), col=col.alpha("red", 0.1))
+plot( DOWY ~ deltLev , data=d2, pch=ifelse(d2$lagEM==1, 16, NA), col=ifelse(d2$WY==2011, rangi2, "red"))
+
+lines( deltLev.seq , mu4.mean )
+shade( mu4.HPDI97 , deltLev.seq, col = col.alpha("purple3", 0.2) )
+shade( mu4.HPDI89 , deltLev.seq)
+shade( mu4.HPDI67 , deltLev.seq, col=col.alpha("gray10", 0.2))
 
 # identify some points
-identify( x=log(d1$deltLevEX) , y=d1$DOWY , 
-          labels=paste0(d1$site,"-",d1$WY), cex=0.8 )
+identify( x=d2$deltLev , y=d2$DOWY , 
+          labels=paste0(d2$site,"-",d2$WY), cex=0.8 )
 
 ```
 
 Maybe try an obs vs. modeled plot but use the regulated data...see how far off it is from the observed.
-
-
 
 
 #### Notes from Myfanwy 2017-05-24
@@ -547,12 +618,14 @@ for ( i in 1:100 ) {
 
 ```{r}
 # show density of log-odds
-coef(m1)
+coef(m4)
 
 # make some plots
-plot(x=d1$DOWY, y=d1$temp_7_max, pch=ifelse(d1$lagEM==1, 16, 21), col=ifelse(d1$WY==1, rangi2, "red"))
+plot(DOWY ~ Q_CV, data=d2, pch=ifelse(d2$lagEM==1, 16, 21), col=ifelse(d2$WY==2011, rangi2, "red"))
 
-abline(a=exp(coef(m1)["bt7mx"]), b=exp(coef(m1)["bQCV"]),
+abline(a=coef(m4)["a"], b=coef(m4)["bQCV"]*d2$Q_CV,
+       col="black", lty=2)
+abline(a=coef(m4)["a"], b=coef(m4)["bQCV"]*d2$Q_CV,
        col="black", lty=2)
 
 
