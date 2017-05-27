@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = normalizePath("../"))
 ```
 
-# What Permits Plasticity in Breeding Timing in River Frogs?
+## What Permits Plasticity in Breeding Timing in River Frogs?
 
 How might varying environmental conditions provide cues for breeding timing from year to year? For frogs that have an amazing plasticity in breeding oviposition timing (inital deposition of eggs) such as *Rana boylii*, there must be certain thresholds that exist (a cutoff which makes oviposition not possible, physiologically). However, beyond a given threshold, there also may be certain cues which act as important environmental markers in dynamic environments such as rivers. By utilizing both, it is likely that the odds of reproductive success improve, and over time this results in evolutionary success. For example, frogs that breed to soon are more likely to have eggs scoured out by late spring storms or have longer developmental/hatching times because water temperatures are lower. Frogs breeding later in the season may trade off greater egg deposition and hatching success with later metamorphosis and lower overwinter survival. 
 
@@ -189,13 +189,13 @@ dowys<-data.frame("mon"=dowy_labs, "dowy"=dowy_breaks)
 
 ```
 
-## Do Some Exploratory Modeling
+### Do Some Exploratory Modeling
 
 After initially trying logistic regression, I think the better approach may be using a continuous variable (DOWY), and including breeding as a binary 1/0. It would allow a better sense of how relevant the effect is on breeding, alternatively I can model just the breeding points and see which are strongest predictors, then use only those variables for the mixed (0/1) dataset.
 
-### Poisson Models
+#### Poisson Models
 
-```{r poisson1}
+```{r poisson-mP1}
 # dowy has to be positive
 #d2s$WY_id <- coerce_index(d2$WY)
 # breeding only
@@ -203,7 +203,7 @@ After initially trying logistic regression, I think the better approach may be u
 #d1s <- d1s %>% filter(breed==1)
 
 # Model 1: Varying Intercept for WY, breeding only, all sites
-m1<- map2stan(
+mP1<- map2stan(
   alist(
     DOWY ~ dpois(mu),
     log(mu) <- a + a_wy[WY_id] + bLEM*lagEM + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
@@ -217,11 +217,11 @@ data=d2s, iter=1e4, chains=3, cores=2)
 
 
 # plots and stuff
-plot(m1)
+plot(mP1)
 dev.off()
-#pairs(m1)
-precis(m1, depth=2, warn=F)
-plot(precis(m1, pars = c("a_wy","bt7mx", "bt30mn", "blevCV", "bQCV", "bdLev", "bwyi", "bdQ",
+#pairs(mP1)
+precis(mP1, depth=2, warn=F)
+plot(precis(mP1, pars = c("a_wy","bt7mx", "bt30mn", "blevCV", "bQCV", "bdLev", "bwyi", "bdQ",
                    "bReg","btCV", "sigma_wy"),  depth=2,warn=F))
 ```
 
@@ -258,7 +258,7 @@ sigma_wy  0.05   0.04       0.01       0.10  4132    1
 
 # Model 2: scaled
 
-m2<- map2stan(
+mP2<- map2stan(
   alist(
     DOWY ~ dpois(mu),
     log(mu) <- a + a_site[site] + bLEM*lagEM + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bReg*REG_id + btCV*temp_CV,
@@ -271,16 +271,16 @@ m2<- map2stan(
 data=d2s, iter=1e4, chains=3, cores=2)
 
 # plots and stuff
-plot(m2)
+plot(mP2)
 dev.off()
-precis(m2, depth=2, warn=F)
-plot(precis(m2, depth=2,warn=F))
+precis(mP2, depth=2, warn=F)
+plot(precis(mP2, depth=2,warn=F))
 
 # using BROOM & TIDY!
 library(broom)
-tidy(m2@stanfit)
-td_mean <- tidy(m2@stanfit,conf.int = TRUE, rhat = T, ess = T)
-td_median<-tidy(m2@stanfit,conf.int = TRUE, rhat = T, ess = T,
+tidy(mP2@stanfit)
+td_mean <- tidy(mP2@stanfit,conf.int = TRUE, rhat = T, ess = T)
+td_median<-tidy(mP2@stanfit,conf.int = TRUE, rhat = T, ess = T,
      estimate.method = "median")
 tds <- rbind(mutate(td_mean, method = "mean"),
                mutate(td_median, method = "median")) %>% mutate(estimate=round(estimate, 3))
@@ -291,14 +291,14 @@ ggplot(tds[tds$term!="dev" & tds$term!="a",], aes(estimate, term)) +
     geom_point(aes(color = method))
 
 # compare models
-compare(m1, m2)
+compare(mP1, mP2)
 ```
 
 ```{r poisson3}
 
 # Model 3: scaled
 
-m3<- map2stan(
+mP3<- map2stan(
   alist(
     DOWY ~ dpois(mu),
     log(mu) <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + blevCV*lev_CV + 
@@ -313,27 +313,26 @@ data=d2s, iter=1e4, chains=4, cores=2)
 
 
 # plots and stuff
-plot(m3)
+plot(mP3)
 dev.off()
-precis(m3, depth=2, warn=F)
-plot(precis(m3, pars = c("a_wy","bt7mx", "bt30mn", "blevCV", "bQCV", "bdLev", "bwyi", "bdQ",
+precis(mP3, depth=2, warn=F)
+plot(precis(mP3, pars = c("a_wy","bt7mx", "bt30mn", "blevCV", "bQCV", "bdLev", "bwyi", "bdQ",
                    "bReg","btCV", "sigma_wy"), depth=2, warn=F))
 abline(v=0, lty=2)
 
-compare(m1, m3)
+compare(mP1, mP3)
 
 ```
-
 
 Looks like the model with `temp_7_max`, and `temp_30_mn` performed best, but not significantly so. The model with `ppt` and other temp values may be important. Ultimately we need to make some plots to figure this out. Also helps to create an ensemble model so that any one parameter gets "averaged" and avoids issues with trying lots of different models until you get one that "works".
 
 I can't figure out how to extract predictions from my ensemble model for a given set of variables, or how to make a residual plot. 
 
-### Regression
+#### Gaussian Regression
 
-```{r gaussian-m4}
+```{r gaussian-mG4}
 
-m4 <- map2stan(
+mG4 <- map2stan(
   alist(
     DOWY ~ dnorm( mu , sigma),
     mu <- a + a_site[site] + bt7mx*temp_7_max + 
@@ -357,10 +356,10 @@ m4 <- map2stan(
   data=d2, iter=1e4 , chains=3, cores=2
 )
 
-plot(m4)
+plot(mG4)
 dev.off()
-precis(m4, depth=2, warn=F)
-plot(precis(m4, depth=1))
+precis(mG4, depth=2, warn=F)
+plot(precis(mG4, depth=1))
 
 ```
 
@@ -388,9 +387,9 @@ sigma_site   2.27   2.20       0.05       4.55  2370    1
 ```
 
 
-```{r gaussian2}
+```{r gaussian-mG5}
 
-m5 <- map2stan(
+mG5 <- map2stan(
   alist(
     DOWY ~ dnorm( mu , sigma),
     mu <- a + a_site[site] + bt7mx*temp_7_max +
@@ -406,12 +405,12 @@ m5 <- map2stan(
   data=d2s, iter=1e4 , chains=3, cores=2
 )
 
-plot(m5)
+plot(mG5)
 dev.off()
-precis(m5, depth=2, warn=F)
-plot(precis(m5, depth=2))
+precis(mG5, depth=2, warn=F)
+plot(precis(mG5, depth=2))
 
-compare(m1, m2, m4, m5)
+compare(mP1, mP2, mG4, mG5)
 
 ```
 
@@ -438,12 +437,278 @@ sigma        7.67   0.59       6.74       8.58 15000    1
 sigma_site 242.15 101.03     115.51     359.43  9058    1
 
 ```
+### Simplify Models
 
-#### Plots
+Too much going on in the models above, so let's simplify and look at a few variables at a time across all sites, and see how predictions/models improve/decrease, make sure to include breeding and 
 
-```{r plots_m5_t7max}
-post4<-extract.samples(m4)
-post5<-extract.samples(m5)
+```{r simplifiedMods}
+
+d2b <- d2 %>% filter(breed==1)
+d2sb <- d2s %>% filter(breed==1)
+d2sb$DOWY_s <- cusScale(d2sb$DOWY)
+
+
+# only with full (lagged data)
+# mS1S <- map2stan(
+#   alist(
+#     DOWY ~ dnorm( mu , sigma),
+#     mu <- a + a_lag[lagEM] + bt7mxWY*(temp_7_max * Index)+
+#       bB*breed + bReg*REG_id ,
+#     a ~ dnorm(0, 10),
+#     a_lag[lagEM] ~ dnorm(0, sigma_lag),
+#     c(bB, bt7mxWY, bReg) ~ dnorm(0,10),
+#     sigma ~ dnorm(0,10),
+#     sigma_lag ~ dcauchy(0,1)
+#   ),
+#   data=d2s, iter=1e4 , chains=3, cores=2
+# )
+
+# Temp Only
+mS1 <- map2stan(
+  alist(
+    DOWY ~ dnorm( mu , sigma),
+    mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bReg*REG_id,
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bReg) ~ dnorm(0,10),
+    sigma ~ dnorm(0,10),
+    sigma_wy ~ dcauchy(0,1)
+  ),
+  data=d2sb, iter=1e4 , chains=3, cores=2
+)
+
+mS1s <- map2stan(
+  alist(
+    DOWY_s ~ dnorm( mu , sigma),
+    mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bReg*REG_id,
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bReg) ~ dnorm(0,10),
+    sigma ~ dnorm(0,10),
+    sigma_wy ~ dcauchy(0,1)
+  ),
+  data=d2sb, iter=1e4 , chains=3, cores=2
+)
+
+# Interaction w WY
+mS2 <- map2stan(
+  alist(
+    DOWY ~ dnorm( mu , sigma),
+    mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bReg*REG_id +
+      bt7mxWY*(temp_7_max * Index),
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt7mxWY, bReg) ~ dnorm(0,10),
+    sigma ~ dnorm(0,10),
+    sigma_wy ~ dcauchy(0,1)
+  ),
+  data=d2sb, iter=1e4 , chains=3, cores=2
+)
+
+# Interation w WY, intercept by SITE
+mS3 <- map2stan(
+  alist(
+    DOWY ~ dnorm( mu , sigma),
+    mu <- a + a_site[site] + bt7mx*temp_7_max + bReg*REG_id +
+      bt7mxWY*(temp_7_max * Index),
+    a ~ dnorm(0, 10),
+    a_site[site] ~ dnorm(0, sigma_site),
+    c(bB, bt7mx, bt7mxWY, bReg) ~ dnorm(0,10),
+    sigma ~ dnorm(0,10),
+    sigma_site ~ dcauchy(0,1)
+  ),
+  data=d2sb, iter=1e4 , chains=3, cores=2
+)
+
+
+plot(mS1)
+dev.off()
+precis(mS1, depth=2, warn=F)
+precis(mS1s, depth=2, warn=F)
+precis(mS2, depth=2, warn=F)
+precis(mS3, depth=2, warn=F)
+plot(precis(mS1, depth=2))
+plot(precis(mS2, depth=2))
+plot(precis(mS3, depth=2))
+
+compare(mS1, mS1s)
+compare(mS1, mS2, mS3)
+
+# using BROOM & TIDY!
+library(broom)
+tidy(mP2@stanfit)
+td_mean <- tidy(mP2@stanfit,conf.int = TRUE, rhat = T, ess = T)
+td_median<-tidy(mP2@stanfit,conf.int = TRUE, rhat = T, ess = T,
+     estimate.method = "median")
+tds <- rbind(mutate(td_mean, method = "mean"),
+               mutate(td_median, method = "median")) %>% mutate(estimate=round(estimate, 3))
+head(tds)
+# plot
+ggplot(tds[tds$term!="dev" & tds$term!="a",], aes(estimate, term)) +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+    geom_point(aes(color = method))
+
+
+```
+
+#### PLOTS: Simple Counterfactual
+
+```{r plotsSimp Counterfactual}
+post1<-extract.samples(mS1s)
+
+d2sb$site <- d2b$site # change back to site name
+
+# test plot
+plot( DOWY ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"))
+
+# the sequence to link model to
+temp_7_max.seq <- seq( from=-1.5 , to=3 , length.out = 30)
+
+# use link to compute mu for each sample from posterior
+# and for each temp in temp.seq
+mu1_U <- link( mS1s, 
+            data=data.frame(temp_7_max=temp_7_max.seq,
+                            REG_id=0, WY_id=4))
+mu1_R <- link( mS1s, 
+            data=data.frame(temp_7_max=temp_7_max.seq,
+                            REG_id=1, WY_id=4))
+
+# summarize the distribution of mu
+mu1U.mean <- apply( mu1_U , 2 , mean )
+mu1R.mean <- apply( mu1_R , 2 , mean )
+mu1U.HPDI89 <- apply( mu1_U , 2 , HPDI , prob=0.89 )
+mu1R.HPDI89 <- apply( mu1_R , 2 , HPDI , prob=0.89 )
+mu1U.HPDI97 <- apply( mu1_U , 2 , HPDI , prob=0.97 )
+mu1R.HPDI97 <- apply( mu1_R , 2 , HPDI , prob=0.97 )
+mu1U.HPDI67 <- apply( mu1_U , 2 , HPDI , prob=0.67 )
+mu1R.HPDI67 <- apply( mu1_R , 2 , HPDI , prob=0.67 )
+
+# use type="n" to hide raw data
+plot( DOWY_s ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"), ylim=c(-2,2.5), xlim=c(-1.5,3))
+
+# add axes
+# aty <- seq(183, 289, by = 15)
+# labelsY<-dowys$mon[8:15]
+# axis(side=2, at = aty, labels=labelsY, las=1)
+
+# loop over samples and plot each mu4 value
+# for ( i in 1:50 )
+#     lines( temp_7_max.seq , mu1_U[i,],
+#            col=col.alpha(rangi2,0.2) )
+
+
+lines( temp_7_max.seq , mu1U.mean, lwd=2, col="darkblue" )
+lines( temp_7_max.seq , mu1R.mean, lwd=2, col="maroon", lty=2 )
+
+# 97% prob intervals
+shade( mu1U.HPDI97 , temp_7_max.seq,
+      col = col.alpha("darkblue",alpha=0.2))
+shade( mu1R.HPDI97 , temp_7_max.seq,
+      col = col.alpha("maroon",alpha=0.2))
+
+
+# identify some points
+identify( x=d2sb$temp_7_max , y=d2sb$DOWY_s , 
+          labels=paste0(d2sb$site,"-",d2sb$WY_id), cex=0.8 )
+
+
+```
+
+#### PLOTS: Obs vs. Predicted
+
+```{r simdata_obs_pred}
+
+mu1s <- link( mS1s )
+
+# summarize samples across cases
+mu.mean <- apply( mu1s , 2 , mean )
+mu.PI <- apply( mu1s , 2 , PI )
+
+# simulate observations, uses original data
+temp.sim <- sim( mS1s , n=1e4 )
+temp.PI <- apply( temp.sim , 2 , PI )
+
+# now plot
+plot( mu.mean ~ d2sb$DOWY_s , pch=16,
+      col=ifelse(d2sb$REG_id==0, rangi2, "red"), 
+      ylim=range(mu.PI) ,
+      xlab="Observed Date of Spawning" , 
+      ylab="Predicted Date of Spawning")
+abline( a=0 , b=1 , lty=2 )
+
+for ( i in 1:nrow(d2sb) )
+    lines( rep(d2sb$DOWY_s[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+        col=ifelse(d2sb$REG_id[i]==0, rangi2, "red") )
+
+identify( x=d2sb$DOWY_s , y=mu.mean , 
+          labels=paste0(d2sb$site,"-",d2sb$WY_id), cex=0.8 )
+
+```
+
+Predicted spawning dates agains observed, with 89% confidence intervals of the average prediction, dashed line is perfect prediction.
+
+
+#### PLOTS: Prediction Error
+
+```{r plot Prediction Error}
+# compute residuals
+dowy.resid <- d2sb$DOWY_s - mu.mean
+
+# get ordering by DOWY rate
+o <- order(dowy.resid)
+
+# make the plot
+dotchart( dowy.resid[o] ,
+          labels=paste(d2sb$site[o],"-",d2sb$WY_id[o]) ,
+          xlim=c(-2,2) , cex=0.6 )
+abline( v=0 , col=col.alpha("black",0.2) )
+
+for ( i in 1:nrow(d2sb) ) {
+    j <- o[i] # which site in order
+    lines( d2sb$DOWY_s[j]-c(temp.PI[1,j],temp.PI[2,j]) , rep(i,2) )
+    points( d2sb$DOWY_s[j]-c(temp.PI[1,j],temp.PI[2,j]) ,
+            rep(i,2),
+            pch=3 , cex=0.6 , col=rangi2 )
+}
+
+#Average prediction error for each site, with 89% interval of the mean (black line) and 89% prediction interval (blue +)
+
+
+# compute expected value at MAP,for each obs
+mu <- coef(mS1s)['a']+coef(mS1s)['a_wy[4]'] + coef(mS1s)['bt7mx']*d2sb$temp_7_max
+
+# compute residual for each point
+m.resid <- d2sb$temp_7_max - mu
+
+# if resid positive it means obs rate is in excess of what we would expect
+
+plot( DOWY_s ~ temp_7_max , d2sb , 
+      col=ifelse(d2sb$REG_id==0, rangi2, "red"), pch=16,
+      xlim=c(-2,3.5), ylim=c(-2,3))
+abline( a=(coef(mS1s)["a_wy[4]"]+coef(mS1s)["a"]), b=coef(mS1s)['bt7mx'])
+
+# loop over points
+for ( i in 1:length(m.resid) ) {
+    x <- d2sb$temp_7_max[i] # x location of line segment
+    y <- d2sb$DOWY_s[i] # observed endpoint of line segment
+    # draw the line segment
+    lines( c(x,x) , c(mu[i],y) , lwd=0.5 , col=col.alpha("black",0.7) )
+}
+
+identify( x=d2sb$temp_7_max , y=d2sb$DOWY_s , 
+          labels=paste0(d2sb$site,"-",d2sb$WY_id), cex=0.8 )
+
+
+# points above the line have higher (later) than expected breeding times, vs. below they have earlier than expected breeding times
+
+```
+
+
+#### OLD Plots
+
+```{r plots_mG5_t7max}
+post4<-extract.samples(mG4)
+post5<-extract.samples(mG5)
 
 plot( DOWY ~ temp_7_max , data=d2, pch=ifelse(d2$lagEM==1, 16, 21), col=ifelse(d2$REG_id==0, rangi2, "red"))
 
@@ -451,12 +716,12 @@ temp_7_max.seq <- seq( from=6 , to=18 , by=0.5)
 
 # use link to compute mu for each sample from posterior
 # and for each temp in temp.seq
-mu4 <- link( m4, 
+mu4 <- link( mG4, 
             data=data.frame(temp_7_max=temp_7_max.seq,lagEM=1, 
                             temp_30_min=8, lev_CV=0, site=1,
                             Q_CV=0, deltLev=0, Index=6,
                             deltQ=0, REG_id=0, temp_CV=0))
-mu5 <- link( m5, 
+mu5 <- link( mG5, 
             data=data.frame(temp_7_max=temp_7_max.seq,lagEM=1, 
                             temp_30_min=8, lev_CV=0, site=1,
                             Q_CV=0, deltLev=0, Index=6,
@@ -495,13 +760,13 @@ identify( x=d2$temp_7_max , y=d2$DOWY ,
 
 
 
-```{r plots_m4_levDelt}
+```{r plots_mG4_levDelt}
 deltLev.seq <- seq( from=-5 , to=2.3 , length.out = 40)
 #unScale(deltLev.seq, d2$deltLev)
 
 # use link to compute mu for each sample from posterior
 # and for each temp in temp.seq
-mu4 <- link( m4, 
+mu4 <- link( mG4, 
             data=data.frame(temp_7_max=10, lagEM=1, 
                             temp_30_min=8, lev_CV=0, site=4,
                             Q_CV=0, Index=6,
@@ -573,7 +838,7 @@ d1f$deltQexp <- exp(d1f$deltQ)
 d1f$deltLevexp <- exp(d1f$deltLev)
 d1f$log_DOWY <- log(d1f$DOWY)
 
-m3 <- map2stan(
+mgP1 <- map2stan(
   alist(
     log_DOWY ~ dgampois(mu, scale),
     log(mu) <- a + bt7mx*temp_7_max + bwyi*Index + bdeltLev * deltLevexp +
@@ -587,25 +852,25 @@ m3 <- map2stan(
   start=list(scale=1),
   warmup=1000, iter=8000, chains=2, cores=2)
 
-precis(m3)
-plot(m3)
+precis(mgP1)
+plot(mgP1)
 
-postcheck(m3)
+postcheck(mgP1)
 #blue points show the empirical proportion on each row of the data
 #open circles are the posterior mean p, with 89% percentile interval
 # + symbols mark the 89% interval of predicted counts for breeding. Lots of dispersion expected here.
 
 
-post3 <- extract.samples(m3)
-quantile( logistic(post3$a) , c(0.025,0.5,0.975) )
+postgP1 <- extract.samples(mgP1)
+quantile( logistic(postgP1$a) , c(0.025,0.5,0.975) )
 
 # draw posterior mean dgam distribution
-curve( dgampois(x,mean(logistic(post3$a)),mean(post3$scale)) , from=0 , to=1 ,
+curve( dgampois(x,mean(logistic(postmgP1$a)),mean(postmgP1$scale)) , from=0 , to=1 ,
     ylab="Density" , xlab="probability", ylim=c(0,3) , lwd=2 )
 # draw 100 beta distributions sampled from posterior
 for ( i in 1:100 ) {
-    p <- logistic( post3$a[i] )
-    scale <- post3$scale[i]
+    p <- logistic( postmgP1$a[i] )
+    scale <- postmgP1$scale[i]
     curve( dgampois(x,p,scale) , add=TRUE , col=col.alpha("black",0.2) )
 }
 
@@ -618,14 +883,14 @@ for ( i in 1:100 ) {
 
 ```{r}
 # show density of log-odds
-coef(m4)
+coef(mG4)
 
 # make some plots
 plot(DOWY ~ Q_CV, data=d2, pch=ifelse(d2$lagEM==1, 16, 21), col=ifelse(d2$WY==2011, rangi2, "red"))
 
-abline(a=coef(m4)["a"], b=coef(m4)["bQCV"]*d2$Q_CV,
+abline(a=coef(mG4)["a"], b=coef(mG4)["bQCV"]*d2$Q_CV,
        col="black", lty=2)
-abline(a=coef(m4)["a"], b=coef(m4)["bQCV"]*d2$Q_CV,
+abline(a=coef(mG4)["a"], b=coef(mG4)["bQCV"]*d2$Q_CV,
        col="black", lty=2)
 
 
@@ -644,7 +909,7 @@ d.pred <- list(
 
 #a_lag_sims <- rnorm(20000,,post1$sigma_lag)
 #a_lag_sims <- matrix(a_lag_sims,2000,10)
-link.m1 <- link( m2 , n=2000 , data=d.pred)
+link.mP1 <- link( mP2 , n=2000 , data=d.pred)
 
 # plot raw data
 plot(d1$DOWY~d1$temp_7_max, pch=ifelse(d1$lagEM==1, 16, 21),
@@ -653,15 +918,15 @@ plot(d1$DOWY~d1$temp_7_max, pch=ifelse(d1$lagEM==1, 16, 21),
      xlab="Temp 7 max" , ylab="DOWY")
 
 # plot posterior median
-mu.median <- apply( link.m1 , 2 , median )
+mu.median <- apply( link.mP1 , 2 , median )
 lines(d.pred$temp_7_max, mu.median)
 
 # plot 97%, 89%, and 67% intervals (all prime numbers)
-mu.PI <- apply( link.m1 , 2 , PI , prob=0.97 )
+mu.PI <- apply( link.mP1 , 2 , PI , prob=0.97 )
 shade(mu.PI, d.pred$temp_7_max )
-mu.PI <- apply( link.m1 , 2 , PI , prob=0.89 )
+mu.PI <- apply( link.mP1 , 2 , PI , prob=0.89 )
 shade(mu.PI, d.pred$temp_7_max )
-mu.PI <- apply( link.m1 , 2 , PI , prob=0.67 )
+mu.PI <- apply( link.mP1 , 2 , PI , prob=0.67 )
 shade(mu.PI, d.pred$temp_7_max )
 
 ```
