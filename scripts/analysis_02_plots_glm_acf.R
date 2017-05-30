@@ -68,8 +68,8 @@ ggplot() +
   scale_fill_viridis(discrete = T, 
                      guide = guide_legend(title = "Water Year")) +
   
-  scale_x_continuous(breaks=c(105,120,135,150,165,180,195,210),
-                     labels=c("Apr-15","May-1","May-15","Jun-1",
+  scale_x_continuous(breaks=c(90, 105,120,135,150,165,180,195,210),
+                     labels=c("Apr-1", "Apr-15","May-1","May-15","Jun-1",
                               "Jun-15","Jul-1","Jul-15","Aug-1")) +
   scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
   geom_hline(yintercept = 10, color="maroon", lty=2)+
@@ -80,7 +80,7 @@ ggplot() +
        title="7 Day Average Water Temperature", x="") +
   facet_grid(site~.)#, scales="free_x")
 
-#ggsave(filename = "figs/watertemp7_breeding_10C.png", width = 9, height = 6, units = "in")
+ggsave(filename = "figs/watertemp7_breeding_10C.png", width = 9, height = 6, units = "in")
 
 
 # LINEAR TREND ANALYSIS ---------------------------------------------------
