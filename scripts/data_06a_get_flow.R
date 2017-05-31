@@ -19,15 +19,21 @@ source("scripts/functions/f_doy.R")
 
 # GET USGS Data  ----------------------------------------------------------------
 
+# NFY
 get.USGS.raw(gage=11413000,river = "NFY", sdate = "1920-01-01",saveRaw = F, daily = T)
-
 summary(NFY_dv)
-save(NFY_dv,file ="data/NFY_dv_USGS_1930_2017-04-28.rda")
+NFY_dv <- NFY_dv %>% mutate(site="NFY") %>% 
+  add_WYD(., "date")
 
+save(NFY_dv,file =paste0("data/NFY_dv_USGS_1930_",Sys.Date(),".rda"))
+
+# NFA
 get.USGS.raw(gage=11427000, river = "NFA", sdate = "1920-01-01",saveRaw = F, daily = T)
-
 summary(NFA_dv)
-save(NFA_dv,file ="data/NFA_dv_USGS_1941_2017-04-28.rda")
+NFA_dv <- NFA_dv %>% mutate(site="NFA") %>% 
+  add_WYD(., "date") %>% select(site, date, gageNo, flow_cfs, DOY:DOWY)
+
+save(NFA_dv,file =paste0("data/NFA_dv_USGS_1941_",Sys.Date(), ".rda"))
 
 # NFA ----------------------------------------------------------------
 
