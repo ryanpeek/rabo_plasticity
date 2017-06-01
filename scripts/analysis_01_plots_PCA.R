@@ -510,6 +510,7 @@ ggplot() +
            show.legend = F, position="dodge") + coord_flip()+ 
   scale_fill_viridis(discrete = T,option = "D") + geom_hline(yintercept = 0.7, color="maroon", lty=2, lwd=0.9, alpha=0.9)+ ylab("Colwell's Seasonality (MP)") + xlab("") + labs(title="Seasonality Metrics in 6 Sierran Rivers") +
   facet_grid(.~site)
+
 ggsave("./figs/colwell_metrics_6rivs_barplot.png", width = 7, height=4, units = "in")
 
 

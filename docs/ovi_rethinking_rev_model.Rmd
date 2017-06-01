@@ -180,8 +180,9 @@ d2$river<-coerce_index(d2$site)
 d2s$WY_id <- coerce_index(d2$WY)
 
 # only the breeding points?
-#d2 <- d2 %>% filter(breed==1)
-#d2s <- d2s %>% filter(breed==1)
+d2b <- d2 %>% filter(breed==1)
+d2sb <- d2s %>% filter(breed==1)
+d2sb$DOWY_s <- cusScale(d2sb$DOWY)
 
 dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
 dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
@@ -195,7 +196,7 @@ After initially trying logistic regression, I think the better approach may be u
 
 #### Poisson Models
 
-```{r poisson1}
+```{r poisson1, eval=F, echo=F}
 # dowy has to be positive
 #d2s$WY_id <- coerce_index(d2$WY)
 # breeding only
@@ -254,7 +255,7 @@ sigma_wy  0.05   0.04       0.01       0.10  4132    1
 ```
 
 
-```{r poisson2}
+```{r poisson2, eval=F, echo=F}
 
 # Model 2: scaled
 
@@ -294,7 +295,7 @@ ggplot(tds[tds$term!="dev" & tds$term!="a",], aes(estimate, term)) +
 compare(mP1, mP2)
 ```
 
-```{r poisson3}
+```{r poisson3, eval=F, echo=F}
 
 # Model 3: scaled
 
@@ -330,7 +331,7 @@ I can't figure out how to extract predictions from my ensemble model for a given
 
 #### Gaussian Regression
 
-```{r gaussian-mG4}
+```{r gaussian-mG4, eval=F, echo=T}
 
 mG4 <- map2stan(
   alist(
@@ -353,7 +354,7 @@ mG4 <- map2stan(
     sigma ~ dnorm(1, 10),
     sigma_site ~ dcauchy(0,1)
   ),
-  data=d2, iter=1e4 , chains=3, cores=2
+  data=d2b, iter=1e4 , chains=3, cores=2
 )
 
 plot(mG4)
@@ -387,67 +388,72 @@ sigma_site   2.27   2.20       0.05       4.55  2370    1
 ```
 
 
-```{r gaussian-mG5}
+```{r gaussian-mG5, eval=F, echo=T}
 
+# scaled version
 mG5 <- map2stan(
   alist(
-    DOWY ~ dnorm( mu , sigma),
-    mu <- a + a_site[site] + bt7mx*temp_7_max +
-      bt30mn*temp_30_min + blevCV*lev_CV + 
-      bQCV*Q_CV + bdLev*deltLev + bwyi*Index + 
-      bLEM*lagEM + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
-    a ~ dnorm(0, 10),
-    a_site[site] ~ dnorm(0, sigma_site),
-    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bwyi, bdQ, bReg, btCV, bLEM) ~ dnorm(0,10),
-    sigma ~ dnorm(0,10),
-    sigma_site ~ dcauchy(0,1)
+    DOWY_s ~ dnorm( mu , sigma),
+    mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + btCV*temp_CV +
+      blevCV*lev_CV + bdLev*deltLev + bQCV*Q_CV + bdQ*deltQ + bReg*REG_id +
+      bppt*days_no_ppt + bH*W_humidity_avg + bWairmx*W_air_max,
+    a ~ dnorm(0, 5),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt30mn, blevCV, bQCV, bdLev, bdQ, bReg, btCV, 
+      bWairmx, bppt, bH) ~ dnorm(0,10),
+    sigma ~ dnorm(0,5),
+    sigma_wy ~ dcauchy(0,1)
   ),
-  data=d2s, iter=1e4 , chains=3, cores=2
+  data=d2sb, iter=2e4 , chains=2, cores=2
 )
 
 plot(mG5)
 dev.off()
-precis(mG5, depth=2, warn=F)
-plot(precis(mG5, depth=2))
+precis(mG5, depth=2, warn=F, prob=0.9)
+plot(precis(mG5, depth=2, warn=F))
+abline(v=0, col="red",lty=2)
 
-compare(mP1, mP2, mG4, mG5)
-
+compare(mG4, mG5)
+save(mG5, file = "models/gaussian_full_varWY.rda" )
 ```
 
 So best model is Gaussian Model 5!
 
 ```
-             Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
-a            1.98  10.00     -14.40      17.61  4780    1
-a_site[1]  230.71  10.46     212.93     246.35  4589    1
-a_site[2]  235.52  10.29     218.93     251.86  4590    1
-a_site[3]  221.39  14.51     197.89     243.83  4669    1
-a_site[4]  226.73  14.42     203.59     249.41  4695    1
-bt7mx        2.11   1.36      -0.04       4.29  8834    1
-bt30mn       1.69   1.04       0.07       3.37 15000    1
-blevCV       2.68   1.00       1.12       4.32 13570    1
-bQCV         0.91   1.03      -0.75       2.53 12174    1
-bdLev        1.10   1.03      -0.50       2.78 10430    1
-bwyi        15.93   0.95      14.42      17.44 12178    1
-bdQ         -2.36   1.06      -4.10      -0.71  9948    1
-bReg         1.02   9.97     -14.99      16.73  8858    1
-btCV        -0.38   0.87      -1.81       0.96 15000    1
-bLEM        -6.17   0.78      -7.41      -4.94  9892    1
-sigma        7.67   0.59       6.74       8.58 15000    1
-sigma_site 242.15 101.03     115.51     359.43  9058    1
+         Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
+a        -0.02   0.60      -0.95       0.92  5881    1
+a_wy[1]   1.79   0.66       0.74       2.81  4529    1
+a_wy[2]  -0.26   0.57      -1.16       0.61  5956    1
+a_wy[3]  -0.64   0.62      -1.60       0.30  5738    1
+a_wy[4]  -0.27   0.64      -1.30       0.71  6258    1
+a_wy[5]  -0.83   0.63      -1.84       0.12  5435    1
+a_wy[6]   0.19   0.64      -0.81       1.18  6926    1
+bt7mx     0.22   0.21      -0.10       0.54  8539    1
+bt30mn   -0.12   0.12      -0.30       0.05 18031    1
+blevCV    0.09   0.38      -0.49       0.68 11259    1
+bQCV      0.14   0.18      -0.14       0.43 12620    1
+bdLev    -0.02   0.26      -0.40       0.37  8051    1
+bdQ       0.04   0.21      -0.27       0.37  8372    1
+bReg     -0.30   0.25      -0.69       0.07 14482    1
+btCV     -0.08   0.16      -0.33       0.16 11290    1
+bWairmx   0.24   0.32      -0.24       0.74 10336    1
+bppt      0.15   0.18      -0.13       0.44 10993    1
+bH        0.24   0.23      -0.12       0.58 10504    1
+sigma     0.39   0.17       0.18       0.59  1922    1
+sigma_wy  1.16   0.48       0.49       1.83  7851    1
 
 ```
 ### Simplify Models
 
 Too much going on in the models above, so let's simplify and look at a few variables at a time across all sites, and see how predictions/models improve/decrease. Sticking with breeding only dates at this point, but all sites.
 
-```{r simplifiedMods}
+```{r simplifiedMods, eval=F, echo=T}
 
 d2b <- d2 %>% filter(breed==1)
 d2sb <- d2s %>% filter(breed==1)
 d2sb$DOWY_s <- cusScale(d2sb$DOWY)
 
-# Temp Only, DOWY scaled
+# Temp7max Only, DOWY scaled
 mS1t <- map2stan(
   alist(
     DOWY_s ~ dnorm( mu , sigma),
@@ -517,28 +523,92 @@ mS1tCV <- map2stan(
   ),
   data=d2sb, iter=1e4 , chains=3, cores=2
 )
+
+#save(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV, 
+#     file = "models/gaussian_simple_varWY.rda")
+
 ```
 
-```{r compare-save_mods}
+```{r compare_mods}
 
+load("models/gaussian_simple_varWY.rda")
+load("models/gaussian_full_varWY.rda")
 
 compare(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV)
+coeftab(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV)
 
-save(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV, 
-     file = "models/gaussian_simple_varWY.rda")
+logistic(coef(mG5))
+postcheck(mG5)
+rethinking::coeftab_plot(mS1tCV)
+
+# sample simple:
+postQcv <- extract.samples(mS1Qcv)
+simQcv <- rnorm(8000, (postQcv$a + postQcv$bQCV), postQcv$sigma)
+
+plot( NULL , xlim=c(-3.5,4), ylim=c(0,1),
+    xlab="log-odds breed" , ylab="Density" )
+
+for ( i in 1:100 )
+    curve( dnorm(x,(postQcv$a[i]+postQcv$bQCV[i]*mean(d2sb$Q_CV)),postQcv$sigma_wy[i]) , 
+           add=TRUE ,col=col.alpha("black",0.2) )
+dens( logistic(simQcv) , xlab="probability breed" )
+
 
 ```
 
-It looks like the best model is `tCV`, `Qcv`, `t7mx`, `dL`, then `dQ`. But not much differentiating these.
+It looks like the best model is `tCV`, `t7mx`, `Qcv`, `dL`, then `dQ`. But not much differentiating these, max difference in WAIC is `2.7` between all models, and weight is fairly evenly distributed.
 
 ```
-       WAIC pWAIC dWAIC weight    SE  dSE
-mS1tCV 31.3   8.3   0.0   0.35 10.77   NA
-mS1Qcv 32.4   8.1   1.1   0.21 10.18 5.63
-mS1t   32.6   8.0   1.3   0.18 10.20 2.14
-mS1dL  32.8   8.1   1.5   0.17 10.94 5.24
-mS1dQ  34.0   8.0   2.7   0.09 10.88 3.23
+      WAIC pWAIC dWAIC weight    SE  dSE
+mS1tCV 31.4   8.3   0.0   0.35 10.70   NA
+mS1t   32.3   8.0   0.9   0.22 10.26 2.11
+mS1Qcv 32.4   8.1   1.0   0.21 10.18 5.68
+mS1dL  33.2   8.3   1.8   0.14 11.20 5.35
+mS1dQ  34.1   8.1   2.7   0.09 10.99 3.27
 ```
+
+```{r betabinomial}
+# earliest possible breeding obs in Sierras is NF Feather (near Apr 1), use days since Apr 1 each year as the difference in RATE?)
+d2b$dowy_apr1 <- d2b$DOWY-182
+data(UCBadmit)
+
+mBB1 <- map2stan(
+    alist(
+        dowy_apr1 ~ dbetabinom(DOWY,pbar,theta),
+        logit(pbar) <- a + btCV*temp_CV,
+        a ~ dnorm(0,5),
+        btCV ~ dnorm(0,5),
+        theta ~ dexp(1)
+    ),
+    data=d2b,
+    constraints=list(theta="lower=0"),
+    start=list(theta=2),
+    iter=4000 , warmup=1000 , chains=2 , cores=2 )
+
+plot(mBB1)
+dev.off()
+precis(mBB1)
+
+# so implied average probability of breeding across all sites/years is: 
+postBB <- extract.samples(mBB1)
+quantile( logistic(postBB$a) , c(0.025,0.5,0.975) )
+
+# plot
+# draw posterior mean beta distribution
+curve( dbeta2(x,mean(logistic(postBB$a + postBB$btCV)),mean(postBB$theta)) , from=0 , to=1 ,
+    ylab="Density" , xlab="probability breed", ylim=c(0,5) , lwd=2 )
+# draw 100 beta distributions sampled from posterior
+for ( i in 1:100 ) {
+    p <- logistic( postBB$a[i] + postBB$btCV[i])
+    theta <- postBB$theta[i]
+    curve( dbeta2(x,p,theta) , add=TRUE , col=col.alpha("black",0.2) )
+}
+
+postcheck(mBB1)
+dev.off()
+```
+
+
 
 ```{r broom_tables_simple}
 
@@ -570,7 +640,7 @@ post1_t7<-extract.samples(mS1t)
 d2sb$site <- d2b$site # change back to site name
 
 # test plot
-plot( DOWY ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"))
+plot( DOWY ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"), cex=2.5)
 
 # the sequence to link model to
 temp_7_max.seq <- seq( from=-1.5 , to=3 , length.out = 30)
@@ -579,19 +649,23 @@ temp_7_max.seq <- seq( from=-1.5 , to=3 , length.out = 30)
 # and for each temp in temp.seq
 mu1_U <- link( mS1t, 
             data=data.frame(temp_7_max=temp_7_max.seq,
-                            REG_id=0, WY_id=3))
+                            REG_id=0, WY_id=6))
 mu1_R <- link( mS1t, 
             data=data.frame(temp_7_max=temp_7_max.seq,
-                            REG_id=1, WY_id=3))
+                            REG_id=1, WY_id=6))
 
 # summarize MU
 mu1U.mean <- apply( mu1_U , 2 , mean )
 mu1R.mean <- apply( mu1_R , 2 , mean )
 
 # mean DOWY for unreg:
-mean(unScale(mu1U.mean, d2sb$DOWY)) # 229
+mean(unScale(mu1U.mean, d2sb$DOWY)) # 268 (2011),  230 (2012),  221 (2013), 224 (2014), 217 (2015), 242 (2016)
+Ut7mx<-tibble("year"=c(2011:2016), "meanDOWY"=c(268,230,221,224,217, 242))
+
 # mean DOWY for Reg:
-mean(unScale(mu1R.mean, d2sb$DOWY)) # 219 (grand mean)
+mean(unScale(mu1R.mean, d2sb$DOWY)) # 258 (2011), 220, (2012), 211 (2013), 214 (2014), 207 (2015), 232 (2016)
+Rt7mx<-tibble("year"=c(2011:2016), "meanDOWY"=c(258,220,211,214,207, 232))
+points(Rt7mx, col="red", pch=16)
 
 # So a 10 day mean difference between regulated and unregulated river
 
@@ -603,8 +677,25 @@ mu1R.HPDI97 <- apply( mu1_R , 2 , HPDI , prob=0.97 )
 mu1U.HPDI67 <- apply( mu1_U , 2 , HPDI , prob=0.67 )
 mu1R.HPDI67 <- apply( mu1_R , 2 , HPDI , prob=0.67 )
 
+# make ggplot HPDIs
+U_ci <-tibble(CI_L=mu1U.HPDI97[1,], CI_U=mu1U.HPDI97[2,]) %>% cbind(., temp_7_max.seq)
+R_ci <-tibble(CI_L=mu1R.HPDI97[1,], CI_U=mu1R.HPDI97[2,]) %>% cbind(., temp_7_max.seq)
+
+
 # use type="n" to hide raw data
-plot( DOWY_s ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"), ylim=c(-2,2.5), xlim=c(-1.5,3))
+library(viridis)
+viridis(6, option = "B")
+# "#000004FF" "#3B0F70FF" "#8C2981FF" "#DE4968FF" "#FE9F6DFF" "#FCFDBFFF"
+plot( DOWY_s ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 21, 23), bg=ifelse(d2sb$REG_id==0, "#000004FF", "#932667FF"), col="gray60", ylim=c(-2,2.5), xlim=c(-1.5,3), cex=2.5)
+
+# ggplot version
+ggplot() + ylim(c(-2,2.5)) + xlim(c(-1.5,3)) + theme_light() + 
+  geom_ribbon(data=U_ci, aes(x=temp_7_max.seq , ymin=CI_L, ymax=CI_U), fill = "#000004FF", alpha=0.5)+
+  geom_ribbon(data=R_ci, aes(x=temp_7_max.seq , ymin=CI_L, ymax=CI_U), fill = "#932667FF", alpha=0.5)+
+  geom_line(aes(x=temp_7_max.seq , y=mu1U.mean), lwd=2, color="#000004FF" ) + #unreg
+  geom_line(aes(x=temp_7_max.seq , y=mu1R.mean), lwd=2, color="#932667FF" ) + #reg
+  geom_point(data=d2sb, aes(x=temp_7_max, y=DOWY_s), fill=ifelse(d2sb$REG_id==0, "#000004FF", "#932667FF"), pch=ifelse(d2sb$WY_id==1, 21, 23), size=5, show.legend = F)
+ggsave(filename = "models/G_simp_ms1tmx_vs_mean.png", width=9, height=6)
 
 # add axes
 # aty <- seq(183, 289, by = 15)
@@ -616,20 +707,20 @@ plot( DOWY_s ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=if
 #     lines( temp_7_max.seq , mu1_U[i,],
 #            col=col.alpha(rangi2,0.2) )
 
-lines( temp_7_max.seq , mu1U.mean, lwd=2, col="darkblue" ) #unreg
-text(1.9, 0.3, labels = "Unreg (u=224)", col="darkblue")
-lines( temp_7_max.seq , mu1R.mean, lwd=2, col="maroon", lty=2 ) #reg
-text(-0.7, -1.3, labels = "Reg (u=214)", col="maroon")
+lines( temp_7_max.seq , mu1U.mean, lwd=2, col="#000004FF" ) #unreg
+#text(1.9, 0.3, labels = "Unreg (u=224)", col="darkblue")
+lines( temp_7_max.seq , mu1R.mean, lwd=2, col="#DE4968FF", lty=2 ) #reg
+#text(-0.7, -1.3, labels = "Reg (u=214)", col="maroon")
 
 # 97% prob intervals
 shade( mu1U.HPDI97 , temp_7_max.seq,
-      col = col.alpha("darkblue",alpha=0.2))
+      col = col.alpha("#000004FF",alpha=0.2))
 shade( mu1R.HPDI97 , temp_7_max.seq,
-      col = col.alpha("maroon",alpha=0.2))
+      col = col.alpha("#DE4968FF",alpha=0.2))
 
 # identify some points
 identify( x=d2sb$temp_7_max , y=d2sb$DOWY_s , 
-          labels=paste0(d2sb$site,"-",d2sb$WY_id), cex=0.8 )
+          labels=paste0(d2sb$site,"-",d2sb$WY_id), cex=1.5 )
 
 
 ```
