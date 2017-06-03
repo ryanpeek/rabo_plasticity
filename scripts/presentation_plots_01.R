@@ -19,17 +19,22 @@ load("data/flow_dv_cfs_full_6sites.rda")
 
 # GET NFA USGS flow
 load("data/NFA_dv_USGS_1941_2017-05-30.rda") 
-NFA_dv <- NFA_dv %>% dplyr::filter(month(date)>3 & month(date)<8)
+#NFA_dv <- NFA_dv %>% dplyr::filter(month(date)>3 & month(date)<8)
 #get.USGS.raw(gage=11427000, river = "NFA", sdate = "1920-01-01",saveRaw = F, daily = T) 
 #save(NFA_dv,file =paste0("data/NFA_dv_USGS_1941_",Sys.Date(), ".rda"))
 
+cfs_cms <- function(cfs){
+  cfs * 0.028316847 # cfs * cms
+}
+
+#cms=0.028316847*cfs
 
 # DATA PREP ---------------------------------------------------------------
 
-#dfv<-flowdf %>% filter(site=="NFA") %>% filter(month(date)>3 & month(date)<8)
-#df <- master_df %>% filter(!site=="MFA") %>% filter(month(date)>3 & month(date)<8)
+dfv<-flowdf %>% filter(site=="NFA") %>% filter(month(date)>3 & month(date)<8)
+df <- master_df %>% filter(!site=="MFA") %>% filter(month(date)>3 & month(date)<8)
 
-df <- master_df %>% filter(site=="NFA") %>% filter(month(date)>3 & month(date)<8)
+#df <- master_df %>% filter(site=="NFA") %>% filter(month(date)>3 & month(date)<8)
 
 dowy_labs1<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
 dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
@@ -38,7 +43,112 @@ dowy_breaks2<-c(1, 32, 62, 93, 124, 152, 183, 213, 244, 274, 305, 336)
 #dowys<-data.frame("mon"=dowy_labs, "dowy"=dowy_breaks)
 
 
-#ggsave(filename = "figs/watertemp7_DOWY_spawn_2011.png", width = 9, height = 6, units = "in")
+# RUBICON HYDRO+Breeding --------------------------------------------------
+
+rub <- df %>% filter(site=="RUB" & WY==2011)
+# temp7max exceeds 9 on 5/20
+first(rub$date[which(rub$temp_7_max>9)])
+
+ggplot() + 
+  geom_line(data=rub, aes(x=DOWY, y=Q_cfs* 0.028316847, group=WY), show.legend = F,
+            size=0.7, alpha=0.9) + 
+  geom_point(data=rub[!is.na(rub$missData),], 
+             aes(x=DOWY, y=Q_cfs* 0.028316847),
+             fill=c("darkblue", "red4"), pch=21, 
+             show.legend = T, size=7) +
+  scale_x_continuous(breaks=dowy_breaks,
+                     labels=dowy_labs1) +
+  geom_vline(xintercept = 232, color="maroon", lty=2, lwd=1, alpha=0.8)+
+  theme_classic(base_size = 12) +
+  labs(y="Mean Daily Flow (cms)", 
+       title="Rubicon Daily Discharge", x="") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
+        legend.key=element_blank(),
+        #legend.key.height = unit(0.5,"mm"),
+        #legend.key.size = unit(1,"mm"),
+        legend.position=c(0.1,.8),
+        axis.text.y = element_text(hjust = 1, size=12))
+
+ggsave(filename = "figs/rubicon_flow_spawn_2011.png", width = 9.6, height=3.7, units = "in")
+
+
+nfa <- df %>% filter(site=="NFA" & WY==2011)
+# temp7max exceeds 9 on 5/20
+first(nfa$date[which(nfa$temp_7_max>9)])
+
+ggplot() + 
+  geom_line(data=nfa, 
+            aes(x=DOWY, y=Q_cfs* 0.028316847),
+            size=0.7, alpha=0.9) + 
+  geom_point(data=nfa[!is.na(nfa$missData),], 
+             aes(x=DOWY, y=Q_cfs*0.028316847),
+             fill=c("red4"), 
+             pch=21,  show.legend = T, size=7) +
+  scale_x_continuous(breaks=dowy_breaks,
+                     labels=dowy_labs1) +
+  geom_vline(xintercept = 214, color="maroon", lty=2, lwd=1, alpha=0.8)+
+  theme_classic(base_size = 12) +
+  labs(y="Mean Daily Flow (cms)", 
+       title="NF American Daily Discharge", x="")+
+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
+        legend.key=element_blank(),
+        #legend.key.height = unit(0.5,"mm"),
+        #legend.key.size = unit(1,"mm"),
+        legend.position=c(0.1,.8),
+        axis.text.y = element_text(hjust = 1, size=12))
+
+
+ggsave(filename = "figs/nfa_flow_spawn_2011.png", width = 9.6, height=3.4, units = "in")
+
+
+# REMAKE THE BIOSCI PLOT --------------------------------------------------
+
+# summarize data with 5/95
+nfa_sum <- NFA_dv %>% 
+  group_by(DOWY) %>% 
+  summarize(meanAnnQ=mean(flow_cfs, na.rm = T),
+            q95=quantile(flow_cfs, probs=c(0.95)),
+            q05=quantile(flow_cfs, probs=c(0.05))) %>% 
+  mutate(meanAnnQ_cms = cfs_cms(meanAnnQ),
+         q95_cms = cfs_cms(q95),
+         q05_cms = cfs_cms(q05))
+
+head(nfa_sum)
+
+
+# using NFA data
+(gBiosci <- ggplot() +
+   # add all WYs
+    geom_ribbon(data=nfa_sum, aes(x=DOWY, ymax=q95_cms, ymin=q05_cms),
+              fill="gray60", lwd=0.5, alpha=0.8, show.legend = F) +
+    geom_line(data=nfa_sum,
+              aes(x=DOWY, y=meanAnnQ_cms),
+              color="black", lwd=1.5, show.legend = F) +
+    # geom_line(data=nfa_sum,
+    #           aes(x=DOWY, y=q95_cms),
+    #           color="gray60", lwd=0.8, alpha=0.8, show.legend = F) +
+    # geom_line(data=nfa_sum,
+    #           aes(x=DOWY, y=q05_cms),
+    #           color="gray60", alpha=0.8, lwd=0.8, show.legend = F) +
+    
+    scale_x_continuous(breaks=dowy_breaks2, labels=dowy_labs2) +
+    theme_classic(base_size = 14) + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
+          legend.key=element_blank(),
+          #legend.key.height = unit(0.5,"mm"),
+          #legend.key.size = unit(1,"mm"),
+          #legend.position=c(.9,.55),
+          axis.text.y = element_text(hjust = 1, size=12))+
+    
+    #panel.grid.major = element_line(colour = 'gray80', linetype = 2)) +
+    labs(y="Mean Annual Discharge (cms)", x="",
+         title="North Fork American River (1942-2017)") +
+    annotate(geom = "text", 300, y = 300, col="gray50",
+             label="Gage data: USGS 11427000 \n *5th & 95th percentiles shaded",
+             cex=3))
+ggsave(filename = "figs/Q_NFA_mean_ann_discharge_plain.png", width = 9, height=6, units="in", dpi=300)
+
 
 # PLOTS: WTEMP vs DOWY ------------------------------------------------
 
@@ -59,8 +169,8 @@ ggplot() +
                      labels=c("Apr-1", "Apr-15","May-1","May-15","Jun-1",
                               "Jun-15","Jul-1","Jul-15","Aug-1")) +
   scale_y_continuous(limits=c(0,27), breaks=seq(0,27,3)) + 
-  geom_hline(yintercept = 9, color="maroon", lty=2)+
-  theme_bw() +
+  geom_hline(yintercept = 9, color="maroon", lty=2, lwd=1, alpha=0.8)+
+  theme_classic(base_size = 12) +
   labs(y=expression(paste("Water Temperature (",degree,"C)")), 
        title="7 Day Max Water Temperature", x="") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
@@ -71,7 +181,36 @@ ggplot() +
         axis.text.y = element_text(hjust = 1, size=12))
   #facet_grid(site~.)#, scales="free_x")
 
-ggsave(filename = "figs/water7mx_spawn_12C.png", width = 9, height = 6, units = "in")
+ggsave(filename = "figs/water7mx_spawn_9C.png", width = 9, height = 6, units = "in")
+
+# PLOTS: Q_CV vs DOWY ------------------------------------------------
+
+# WTemp: 7-Day max w threshold
+ggplot() + 
+  geom_point(data=df, aes(x=DOY, y=Q_CV, color=as.factor(WY),
+                          group=WY), show.legend = F, pch=16, size=0.7, alpha=0.5) + 
+  geom_point(data=df[!is.na(df$missData),], aes(x=DOY, y=Q_CV,
+                                                fill=as.factor(WY), shape=as.factor(site)), color="gray30",
+             show.legend = T, size=5, alpha=0.9) +
+  guides(color=F, fill=F)+
+  scale_shape_manual("Site", values =c("NFY"=22,"NFA"=21, "RUB"=23, "SFY"=24, "MFY"=25), breaks=c("NFY","NFA","RUB","SFY","MFY"), labels=c("NFY","NFA","RUB","SFY","MYF")) +
+  scale_fill_viridis("Water Year", discrete = T, option = "A")+
+  scale_color_viridis("Water Year", discrete = T, option = "A")+
+  scale_x_continuous(breaks=c(90, 105,120,135,150,165,180,195,210),
+                     labels=c("Apr-1", "Apr-15","May-1","May-15","Jun-1",
+                              "Jun-15","Jul-1","Jul-15","Aug-1")) +
+  scale_y_continuous(limits=c(0,26), breaks=seq(0,26,2)) + 
+  geom_hline(yintercept = 8, color="gray", lty=2, lwd=1)+
+  theme_classic(base_size = 12) +
+  labs(y="% Coefficient Variation of Daily Discharge", 
+       title="CV Q", x="") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
+        legend.key=element_blank(),
+        legend.position=c(0.1,.8),
+        axis.text.y = element_text(hjust = 1, size=12))
+
+ggsave(filename = "figs/CV_Q_w_spawn.png", width = 9, height = 6, units = "in")
+
 
 
 # PLOTS: FlowShade vs DOWY ------------------------------------------------
@@ -144,7 +283,7 @@ ggplot() +
 
 ggsave(filename = "figs/water7mx_spawn_12C.png", width = 9, height = 6, units = "in")
 
-# PLOTS: CV vs. DOWY: ---------------------------------------------------------
+# PLOTS: oldCV vs. DOWY: ---------------------------------------------------------
 
 (gCV <- ggplot() +
    # add all WYs
@@ -163,9 +302,8 @@ ggsave(filename = "figs/water7mx_spawn_12C.png", width = 9, height = 6, units = 
                       #legend.key.size = unit(1,"mm"),
                       #legend.position=c(.9,.55),
                       axis.text.y = element_text(hjust = 1, size=12))+
-   labs(y="Daily Coefficient of Variation in Stage", x="",
-        title="NF American River") +
-   facet_grid(site~.))
+   labs(y="Daily Coefficient of Variation in Stage", x=""))# +
+   #facet_grid(site~.))
 
 
 # save
@@ -366,4 +504,58 @@ ggplot() +
   geom_line(data=plotNFA, aes(x=Period, y=Power.avg), col="black")+
   geom_line(data=plotNFY, aes(x=Period, y=Power.avg), col="blue",lty=2)+
   scale_x_continuous(breaks=c(seq(0,300,24)))
+
+
+# SEASONALITY VS PREDICTABILIITY -------------------------------------------
+
+# seasonality (colwell)
+load("models/colwell_daily_variables.rda")
+colwell_dat <- final_bind %>% #filter(!site=="MFY") %>% 
+  filter(var=="Q_hr_cfs") 
+
+# predictability (wavelet)
+load("models/wavelet_plotpower.rda")
+
+# add a site col and combine:
+plotMFY$site <- "MFY"; plotSFY$site <- "SFY"; plotNFY$site <- "NFY"; plotNFA$site <- "NFA"; plotMFA$site <- "MFA"; plotRUB$site <- "RUB"
+
+waveletsALL<-rbind(plotMFY, plotSFY,plotNFY,plotNFA,plotMFA,plotRUB)
+
+ggplot() + 
+  geom_line(data=waveletsALL, aes(x=Period, y=Power.avg, color=site), lwd=1.3)+
+  scale_x_continuous(breaks=c(seq(0,24,3)), limits = c(0,27)) +
+  scale_y_continuous(breaks=c(seq(0,12,2))) +
+  scale_color_viridis(discrete = T, option="A")+
+  theme_bw() + xlab("Predictability Period (Months)")
+
+# identify peaks:
+maxWave <- waveletsALL %>% 
+  group_by(site) %>% 
+  summarize(maxPower=max(Power.avg),
+            period = .$Period[which.max(Power.avg)],
+            sumPowerP=sum(Power.avg.pval))
+
+maxWave
+colwell_dat
+colWave_combine<-inner_join(maxWave, colwell_dat, by="site")
+
+colWave_combine$REG <- ifelse(colWave_combine$site=="NFY"|colWave_combine$site=="NFA", "Unregulated", "Regulated")
+save(colWave_combine, file = "data/seasonality_v_predictable.rda")
+
+# seasonality vs. predictability
+ggplot() + 
+  geom_point(data=colWave_combine, aes(x=MP_metric, y=maxPower, fill=REG), pch=21, size=7.5)+
+  ylim(c(5,11))+xlim(c(0.4,1))+
+  geom_label_repel(data=colWave_combine, aes(x=MP_metric, y=maxPower, label=site), nudge_x = 0.07, size=7)+
+  scale_fill_viridis("", discrete = T, option="A")+
+  theme_classic(base_size = 14) + xlab("Seasonality (M/P)") + ylab("Predictability (Avg. Power at 12 Months)")+
+  theme(legend.position=c(0.2,.8),
+        legend.text = element_text(size=14))
+#axis.text.x = element_text(angle = 0, size=14, color = "black"),        
+#axis.title.y = element_text(size=14, face="bold"),
+#axis.title.x = element_text(size=14, face="bold"),
+#axis.text.y = element_text(hjust = 1, size=14, color="black"))
+
+ggsave("./figs/seasonality_predictability_dots.png")#, width = 10, height=8, units = "in")
+
 

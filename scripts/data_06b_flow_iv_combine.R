@@ -32,7 +32,7 @@ load("data/NFA_iv_USGS_updated_2017-02-22.rda")
 load("data/RUB_iv_PCWA_2009-2016.rda")
 
 #DAILY
-# load("data/daily_flow_cfs_data_6sites.rda")
+load("data/daily_flow_cfs_data_6sites.rda")
 
 
 # FORMAT TO SAME VARS -----------------------------------------------------

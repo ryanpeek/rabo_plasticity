@@ -37,7 +37,7 @@ load("data/flow_dv_cfs_full_6sites.rda")
 
 df <- master_df
 # df <- master_df %>% filter(site!="MFY")
-df <- master_df %>% filter(month(date)>3 & month(date)<8)
+#df <- master_df %>% filter(month(date)>3 & month(date)<8)
 
 dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
 dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)

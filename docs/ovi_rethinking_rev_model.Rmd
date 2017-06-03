@@ -184,9 +184,20 @@ d2b <- d2 %>% filter(breed==1)
 d2sb <- d2s %>% filter(breed==1)
 d2sb$DOWY_s <- cusScale(d2sb$DOWY)
 
+# some date strings
 dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
 dowy_breaks<-c(1, 32, 62, 93, 124, 152, 167, 183, 198, 213, 228, 244, 259, 274, 289, 305, 320, 336)
 dowys<-data.frame("mon"=dowy_labs, "dowy"=dowy_breaks)
+
+# look up for DOWY
+# dowy_all<-master_df %>% filter(WY==2013, site=="NFY") %>% 
+#   select(DOWY, date) %>% 
+#   mutate(mon=month(date, label = T, abbr = T),
+#          mday=mday(date),
+#          monDay = paste0(mon, "-", mday)) %>% select(DOWY, monDay)
+# dowy_all
+#save(dowy_all, file = "data/dowy_lookup.rda")
+load("data/dowy_lookup.rda")
 
 ```
 
@@ -535,7 +546,7 @@ load("models/gaussian_simple_varWY.rda")
 load("models/gaussian_full_varWY.rda")
 
 compare(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV)
-coeftab(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV)
+coeftab(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV, mG5)
 
 logistic(coef(mG5))
 postcheck(mG5)
@@ -544,6 +555,7 @@ rethinking::coeftab_plot(mS1tCV)
 # sample simple:
 postQcv <- extract.samples(mS1Qcv)
 simQcv <- rnorm(8000, (postQcv$a + postQcv$bQCV), postQcv$sigma)
+simQcv <- rnorm(8000, (postQcv$a), postQcv$sigma)
 
 plot( NULL , xlim=c(-3.5,4), ylim=c(0,1),
     xlab="log-odds breed" , ylab="Density" )
@@ -551,7 +563,8 @@ plot( NULL , xlim=c(-3.5,4), ylim=c(0,1),
 for ( i in 1:100 )
     curve( dnorm(x,(postQcv$a[i]+postQcv$bQCV[i]*mean(d2sb$Q_CV)),postQcv$sigma_wy[i]) , 
            add=TRUE ,col=col.alpha("black",0.2) )
-dens( logistic(simQcv) , xlab="probability breed" )
+
+dens( logistic(simQcv) , xlab="probability Qcv influence DOWY" )
 
 
 ```
@@ -640,7 +653,7 @@ post1_t7<-extract.samples(mS1t)
 d2sb$site <- d2b$site # change back to site name
 
 # test plot
-plot( DOWY ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"), cex=2.5)
+plot( DOWY_s ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 16, 21), col=ifelse(d2sb$REG_id==0, rangi2, "red"), cex=2.5)
 
 # the sequence to link model to
 temp_7_max.seq <- seq( from=-1.5 , to=3 , length.out = 30)
@@ -688,13 +701,30 @@ viridis(6, option = "B")
 # "#000004FF" "#3B0F70FF" "#8C2981FF" "#DE4968FF" "#FE9F6DFF" "#FCFDBFFF"
 plot( DOWY_s ~ temp_7_max , data=d2sb, pch=ifelse(d2sb$WY_id==1, 21, 23), bg=ifelse(d2sb$REG_id==0, "#000004FF", "#932667FF"), col="gray60", ylim=c(-2,2.5), xlim=c(-1.5,3), cex=2.5)
 
+#mean(d2$DOWY) # 213.86
+#sd(d2$DOWY) # 22.18837
+
+# lookup the scaled equiv
+y_labs<-tibble("DOWY"=round(unScale(c(-2, -1.5, -1, -0.5, 0, 0.5, 1.0, 1.5, 2, 2.5), d2b$DOWY), 0)) %>% 
+  inner_join(., dowy_all, by = "DOWY") %>% select(monDay) %>% as.data.frame()
+
+(x_labs<-tibble("temp_7_max"=round(unScale(c(seq(-1.5, 3, 0.5)), d2b$temp_7_max), 0)) %>% as.data.frame())
+
 # ggplot version
-ggplot() + ylim(c(-2,2.5)) + xlim(c(-1.5,3)) + theme_light() + 
+ggplot() + 
+  #ylim(c(-2,2.5)) + 
+  #xlim(c(-1.5,3)) + 
+  theme_light() + 
   geom_ribbon(data=U_ci, aes(x=temp_7_max.seq , ymin=CI_L, ymax=CI_U), fill = "#000004FF", alpha=0.5)+
   geom_ribbon(data=R_ci, aes(x=temp_7_max.seq , ymin=CI_L, ymax=CI_U), fill = "#932667FF", alpha=0.5)+
+  scale_y_continuous("Date", breaks=c(seq(-2,2.5,0.5)),
+                   labels= y_labs[,1])+
+  scale_x_continuous("Water Temp (7-day Max)", breaks=c(seq(-1.5, 3, 0.5)),
+                   labels= x_labs[,1])+
   geom_line(aes(x=temp_7_max.seq , y=mu1U.mean), lwd=2, color="#000004FF" ) + #unreg
   geom_line(aes(x=temp_7_max.seq , y=mu1R.mean), lwd=2, color="#932667FF" ) + #reg
   geom_point(data=d2sb, aes(x=temp_7_max, y=DOWY_s), fill=ifelse(d2sb$REG_id==0, "#000004FF", "#932667FF"), pch=ifelse(d2sb$WY_id==1, 21, 23), size=5, show.legend = F)
+
 ggsave(filename = "models/G_simp_ms1tmx_vs_mean.png", width=9, height=6)
 
 # add axes
