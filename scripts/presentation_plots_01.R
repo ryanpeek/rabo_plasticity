@@ -48,24 +48,33 @@ dowy_breaks2<-c(1, 32, 62, 93, 124, 152, 183, 213, 244, 274, 305, 336)
 
 
 # RUBICONvNFA HYDRO+Breeding --------------------------------------------------
+load("data/flow_hv_cfs_6sites.rda")
 
-rub <- df %>% filter(site=="RUB" & WY==2011)
+# for hourly
+rub <- flow_hv %>% filter(site=="RUB" & WY==2011 & month(datetime)>3 & month(datetime)<8)
+
+nfa <- flow_hv %>% filter(site=="NFA" & WY==2011 & month(datetime)>3 & month(datetime)<8)
+
+# for daily (and breeding points only)
+rubBreed <- df %>% filter(site=="RUB" & WY==2011 & month(date)>3 & month(date)<8 & !is.na(missData)) # 5/26, and 6/28
+
+with(rub, plot(datetime, flow_cfs, typ="l"))
 # temp7max exceeds 9 on 5/20
-first(rub$date[which(rub$temp_7_max>9)])
+first(rubBreed$date[which(rubBreed$temp_7_max>9)])
 
+# rub plot
 ggplot() + 
-  geom_line(data=rub, aes(x=DOWY, y=Q_cfs* 0.028316847, group=WY), show.legend = F,
-            size=0.7, alpha=0.9) + 
-  geom_point(data=rub[!is.na(rub$missData),], 
-             aes(x=DOWY, y=Q_cfs* 0.028316847),
-             fill=c("darkblue", "red4"), pch=21, 
-             show.legend = T, size=7) +
-  scale_x_continuous(breaks=dowy_breaks,
-                     labels=dowy_labs1) +
-  geom_vline(xintercept = 232, color="maroon", lty=2, lwd=1, alpha=0.8)+
+  geom_line(data=rub, aes(x=datetime, y=flow_cfs* 0.028316847), 
+            show.legend = F, size=0.9, alpha=0.9) + 
+  # early breeding RUB
+  geom_point(aes(x=ymd_hms("2011-05-26 12:00:00"), y=485.8* 0.028316847), fill=c("darkblue"), pch=21, show.legend = T, size=7) +
+  # late breeding RUB
+  geom_point(aes(x=ymd_hms("2011-06-28 12:00:00"), y=1252.6* 0.028316847), fill=c("red4"), pch=21, show.legend = T, size=7)+
+  scale_x_datetime("", date_breaks = "2 weeks", date_labels = "%b-%d")+
+  #geom_vline(aes(xintercept = ymd_hms("2011-05-20 12:00:00")), color="maroon", lty=2, lwd=1, alpha=0.8)+
   theme_classic(base_size = 12) +
   labs(y="Mean Daily Flow (cms)", 
-       title="Rubicon Daily Discharge", x="") + 
+       title="Rubicon Hourly Discharge", x="") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
         legend.key=element_blank(),
         #legend.key.height = unit(0.5,"mm"),
@@ -76,32 +85,31 @@ ggplot() +
 ggsave(filename = "figs/rubicon_flow_spawn_2011.png", width = 9.6, height=3.7, units = "in")
 
 ## NFA SPAWN 2011
-nfa <- df %>% filter(site=="NFA" & WY==2011)
-# temp7max exceeds 9 on 5/20
-first(nfa$date[which(nfa$temp_7_max>9)])
+# for hourly:
+nfa <- flow_hv %>% filter(site=="NFA" & WY==2011 & month(datetime)>3 & month(datetime)<8)
+
+# temp7max permanently exceeds 9 on 5/1 for NFA
+#first(nfa$date[which(nfa$temp_7_max>9)])
+# for daily (and breeding points only)
+nfaBreed <- df %>% filter(site=="NFA" & WY==2011 & month(date)>3 & month(date)<8 & !is.na(missData)) # 6/30 
+
+# hourly
 
 ggplot() + 
-  geom_line(data=nfa, 
-            aes(x=DOWY, y=Q_cfs* 0.028316847),
-            size=0.7, alpha=0.9) + 
-  geom_point(data=nfa[!is.na(nfa$missData),], 
-             aes(x=DOWY, y=Q_cfs*0.028316847),
-             fill=c("red4"), 
-             pch=21,  show.legend = T, size=7) +
-  scale_x_continuous(breaks=dowy_breaks,
-                     labels=dowy_labs1) +
-  geom_vline(xintercept = 214, color="maroon", lty=2, lwd=1, alpha=0.8)+
+  geom_line(data=nfa, aes(x=datetime, y=flow_cfs* 0.028316847), 
+            show.legend = F, size=0.9, alpha=0.9) + 
+  # Eggs
+  geom_point(aes(x=ymd_hms("2011-06-29 12:00:00"), y=2617* 0.028316847), fill=c("red4"), pch=21, show.legend = T, size=7)+
+  scale_x_datetime("", date_breaks = "2 weeks", date_labels = "%b-%d")+
   theme_classic(base_size = 12) +
   labs(y="Mean Daily Flow (cms)", 
-       title="NF American Daily Discharge", x="")+
-
+       title="NFA Hourly Discharge", x="") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
         legend.key=element_blank(),
         #legend.key.height = unit(0.5,"mm"),
         #legend.key.size = unit(1,"mm"),
-        legend.position=c(0.1,.8),
+        #legend.position=c(0.1,.8),
         axis.text.y = element_text(hjust = 1, size=12))
-
 
 ggsave(filename = "figs/nfa_flow_spawn_2011.png", width = 9.6, height=3.4, units = "in")
 
@@ -239,7 +247,7 @@ site_sum<-bind_rows(mfa_sum,rub_sum, nfa_sum)
 
 ggsave(filename = "figs/Q_AMR_mean_ann_discharge_combined.png", width = 9, height=6, units="in", dpi=300)
 
-ggsave(filename = "figs/Q_AMR_mean_ann_discharge_combined-RUB-NFA.png", width = 9, height=4, units="in", dpi=300)
+ggsave(filename = "figs/Q_AMR_mean_ann_discharge_combined-RUB-NFA.png", width = 9, height=6, units="in", dpi=300)
 
 # PLOTS: LogFLOW_DOWY -----------------------------------------------------
 
