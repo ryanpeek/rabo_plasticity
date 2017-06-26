@@ -275,18 +275,6 @@ ggplot() +
 ggsave("./figs/seasonality_predictability_dots.png")#, width = 10, height=8, units = "in")
 
 
-# PEAK IDENTIFICATION -----------------------------------------------------
-
-# KernSmooth
-library(KernSmooth)
-plot(plotNFY$Period, plotNFY$Power.avg, typ="l", xlim=c(0,32), col="darkblue")
-fit <- locpoly(plotNFY$Period, plotNFY$Power.avg, bandwidth = 0.25)
-lines(fit, col="red",lty=2)
-
-dsmooth<-diff(fit$y)
-locmax<-sign(c(0,dsmooth))>0 & sign(c(dsmooth,0))<0
-points(fit$x[locmax],fit$y[locmax],cex=3,c=2)    
-    
     
     
     

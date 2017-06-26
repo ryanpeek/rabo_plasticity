@@ -17,12 +17,6 @@ load("data/master_dat_2011-2016.rda")
 load("data/flow_dv_cfs_2011_6sites.rda")
 load("data/flow_dv_cfs_full_6sites.rda")
 
-# GET NFA USGS flow
-#load("data/NFA_dv_USGS_1941_2017-05-30.rda") 
-#NFA_dv <- NFA_dv %>% dplyr::filter(month(date)>3 & month(date)<8)
-#get.USGS.raw(gage=11427000, river = "NFA", sdate = "1920-01-01",saveRaw = F, daily = T) 
-#save(NFA_dv,file =paste0("data/NFA_dv_USGS_1941_",Sys.Date(), ".rda"))
-
 cfs_cms <- function(cfs){
   cfs * 0.028316847 # cfs * cms
 }
