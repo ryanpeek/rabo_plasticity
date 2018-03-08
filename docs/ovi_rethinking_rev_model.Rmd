@@ -136,7 +136,7 @@ d1s$lagEM <- coerce_index(d1s$lagEM) # for modeling
 
 # update cols
 d1$Qmx_log <- log(d1$Q_max)
-d1$DOWY_log <- log(d1$DOWY)
+d1$DOWYprop <- d1$DOWY/365 # poisson can't have negatives
 d1s$DOWY <- d1$DOWY
 d1$deltLevEX<-exp(d1$deltLev)
 d1$lagEM<-coerce_index(d1$lagEM)
@@ -171,7 +171,8 @@ d2s$lagEM <- coerce_index(d2s$lagEM) # for modeling
 
 # update cols
 d2$Qmx_log <- log(d2$Q_max)
-d2$DOWY_log <- log(d2$DOWY)
+d2$DOWYprop <- (d2$DOWY)/365
+d2s$DOWYprop <- (d2s$DOWY)/365
 d2s$DOWY <- d2$DOWY
 d2$deltLevEX<-exp(d2$deltLev)
 d2$lagEM<-coerce_index(d2$lagEM)
@@ -182,7 +183,7 @@ d2s$WY_id <- coerce_index(d2$WY)
 # only the breeding points?
 d2b <- d2 %>% filter(breed==1)
 d2sb <- d2s %>% filter(breed==1)
-d2sb$DOWY_s <- cusScale(d2sb$DOWY)
+d2sb$DOWYprop <- (d2sb$DOWY)/365
 
 # some date strings
 dowy_labs<-c("Oct","Nov","Dec","Jan", "Feb","Mar", "Mar-15", "Apr-01", "Apr-15", "May-01", "May-15", "Jun-01", "Jun-15", "Jul-01", "Jul-15", "Aug", "Aug-15", "Sep")
@@ -207,18 +208,54 @@ After initially trying logistic regression, I think the better approach may be u
 
 #### Poisson Models
 
-```{r poisson1, eval=F, echo=F}
-# dowy has to be positive
-#d2s$WY_id <- coerce_index(d2$WY)
-# breeding only
-#d1 <- d1 %>% filter(breed==1)
-#d1s <- d1s %>% filter(breed==1)
+Poisson models (or a *Poisson process*) needs to meet the following criteria:
 
-# Model 1: Varying Intercept for WY, breeding only, all sites
+ - The probability of at least one occurrence of the event in a given time
+interval is proportional to the length of the interval.
+ - The probability of two or more occurrences of the event in a very small
+time interval is negligible.
+ - The numbers of occurrences of the event in disjoint time intervals are
+mutually independent.
+
+Then the probability distribution of the number of occurrences of the event
+in a fixed time interval is Poisson with mean $\mu = \lambda t$, where $\lambda$ is the rate of occurrence of the event per unit of time and t is the length of the time interval.
+
+Following these criteria, the day of egg deposition, or breeding initiation, would be a suitable metric for a Poisson process model.  A Poisson model tends to do well when the variance tends to increase with the mean.
+
+```{r poisson1, eval=F, echo=F}
+# response has to be positive integer, so use DOWY lag as metric.
+
+# breeding lag
 mP1<- map2stan(
   alist(
-    DOWY ~ dpois(mu),
-    log(mu) <- a + a_wy[WY_id] + bLEM*lagEM + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
+    lagEM ~ dpois(mu),
+    log(mu) <- a + a_wy[WY_id] +
+      bt7mx*temp_7_max + bt30mn*temp_30_min + btCV*temp_CV + # water temp
+      bairmin*W_air_min + bairmax*W_air_max + bppt*days_no_ppt + bwyi*Index + #air/ppt
+      bQCV*Q_CV + bdLev*deltLev + blevavg*lev_avg + bdQ*deltQ + # flow
+      bReg*REG_id, #regulation
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt30mn, btCV, bairmin, bairmax, bppt, bwyi,
+      bQCV, bdLev, blevavg, bdQ, bReg) ~ dnorm(0,10),
+    sigma_wy ~ dcauchy(0,1)
+),
+data=d2s, iter=1e4, chains=3, cores=2)
+
+
+# plots and stuff
+plot(mP1)
+dev.off()
+#pairs(mP1)
+precis(mP1, depth=2, warn=F)
+plot(precis(mP1, depth=2,warn=F))
+
+
+# Model P2: Varying Intercept for WY, breeding only, all sites
+mP2<- map2stan(
+  alist(
+    lagEM ~ dpois(mu),
+    log(mu) <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + bQCV*Q_CV + bdLev*deltLev + bwyi*Index + bdQ*deltQ + bReg*REG_id + btCV*temp_CV,
     a ~ dnorm(0, 10),
     a_wy[WY_id] ~ dnorm(0, sigma_wy),
     bLEM ~ dnorm(2, 10),
@@ -342,6 +379,51 @@ I can't figure out how to extract predictions from my ensemble model for a given
 
 #### Gaussian Regression
 
+```{r gauss-mG4a, eval=F, echo=T}
+
+mG4a <- map2stan(
+  alist(
+    DOWYprop ~ dnorm( mu , sigma),
+    mu <- a + a_wy[WY_id] +
+      bt7mx*temp_7_max + bt30mn*temp_30_min + btCV*temp_CV + # water temp
+      bairmin*W_air_min + bairmax*W_air_max + # air temps
+      bppt*days_no_ppt + bwyi*Index + #ppt and WY Index
+      bQCV*Q_CV + bdLev*deltLev + blevavg*lev_avg + bdQ*deltQ + # flow
+      bReg*REG_id, #regulation
+    a ~ dnorm(0, 10),
+    a_wy[WY_id] ~ dnorm(0, sigma_wy),
+    c(bt7mx, bt30mn, btCV, bairmin, bairmax, bppt, bwyi,
+      bQCV, bdLev, blevavg, bdQ, bReg) ~ dnorm(0,10),
+    sigma ~ dnorm(1,10),
+    sigma_wy ~ dcauchy(0,1)
+  ),
+  data=d2sb, iter=1e4 , chains=3, cores=2
+)
+
+plot(mG4a)
+dev.off()
+precis(mG4a, depth=2, warn=F)
+plot(precis(mG4a, depth=2,warn=F))
+
+# using BROOM & TIDY!
+library(broom)
+tidy(mG4a@stanfit)
+td_mean <- tidy(mG4a@stanfit,conf.int = TRUE, rhat = T, ess = T)
+td_median<-tidy(mG4a@stanfit,conf.int = TRUE, rhat = T, ess = T,
+     estimate.method = "median")
+tds <- rbind(mutate(td_mean, method = "mean"),
+               mutate(td_median, method = "median")) %>% mutate(estimate=round(estimate, 3))
+head(tds)
+# plot
+ggplot(tds[tds$term!="dev" & tds$term!="a",], aes(estimate, term)) +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+    geom_point(aes(color = method))
+
+
+```
+
+
+
 ```{r gaussian-mG4, eval=F, echo=T}
 
 mG4 <- map2stan(
@@ -404,7 +486,7 @@ sigma_site   2.27   2.20       0.05       4.55  2370    1
 load("models/gaussian_full_varWY.rda" )
 
 # scaled version
-#mG5 <- map2stan(
+mG5 <- map2stan(
   alist(
     DOWY_s ~ dnorm( mu , sigma),
     mu <- a + a_wy[WY_id] + bt7mx*temp_7_max + bt30mn*temp_30_min + btCV*temp_CV +
@@ -427,7 +509,7 @@ precis(mG5, depth=2, warn=F, prob=0.9)
 plot(precis(mG5, depth=2, warn=F))
 abline(v=0, col="red",lty=2)
 
-compare(mG4, mG5)
+compare(mG4a, mG5)
 save(mG5, file = "models/gaussian_full_varWY.rda" )
 ```
 
@@ -548,11 +630,12 @@ mS1tCV <- map2stan(
 load("models/gaussian_simple_varWY.rda")
 load("models/gaussian_full_varWY.rda")
 
-compare(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV)
+compare(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV, mG4a)
 coeftab(mS1dL, mS1dQ, mS1Qcv, mS1t, mS1tCV, mG5)
 
 logistic(coef(mG5))
 postcheck(mG5)
+postcheck(mG4a)
 rethinking::coeftab_plot(mS1tCV)
 
 # sample simple:
