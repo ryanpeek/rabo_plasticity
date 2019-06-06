@@ -1,0 +1,41 @@
+---
+title: "plasiticity cues:revised_outline"
+author: "Ryan Peek"
+date: "5/17/2019"
+output: html_document
+---
+
+## Objective
+
+ - Demonstrate frogs are resilient because they persist under highly variable conditions (plasticity in breeding timing)
+ - Impacts of climate change may be less critical because they have adapted to highly stochastic system
+ - But impacts of regulation or anthropogenic shifts in the cues they use can have highly significant impact on population
+ 
+
+## Journals
+
+ - Conservation Letters
+ - Conservation Bio
+ - RRA?
+ - Ecosphere?
+ 
+## Overview
+
+ - Show data for just NFA? (maybe NFY?) with temperature (air/water), humidity?, daylength (CIMIS?), precip/snowpack, and flow data. Model to show most important cues (can add many more) appear to be flow/temp.
+ - As discussion/follow up, demonstrate how these cues shift year to year by illustrating change with changing flow regimes via wavelet (eg. Tonkin et al 2017). Regulation/flow regime impact is likely most significant indication (Kupferberg), so promoting frog populations means also promoting cues for persistence in dynamic environments (that they evolved with!)
+ 
+
+### Sites for Data
+
+**CDEC**
+
+ - ADR (1200 ft, has precip accum (2), ppt increm (45) temp (4, 30, 31, 32), near auburn dam): 38.882, -121.045
+  - USGS/NFD (700 ft, flow (20), stage (1), mean daily discharge(41)): 38.936008, -121.02383
+  - OXB (1070 ft, flow, stage)
+  - NFA (500 ft, water temp (25)): 38.852, -121.057
+  - HYS (6600ft, snow WC (3), SNOW Depth (18),  PPT, TEMP (4-hr, 31-day))
+  - SSL (6950ft, snow WC, wind, ppt, )
+ 
+**USGS**
+
+ - 11427000/NFD (700 ft, flow (20), stage (1), mean daily discharge(41)): 38.936008, -121.02383
