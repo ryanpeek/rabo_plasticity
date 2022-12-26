@@ -21,7 +21,7 @@ load("data/flow_dv_cfs_2011_6sites.rda") # updated and merged flows:
 
 # filter to period of interest: breeding and rearing period for only unreg sites:
 df <- master_df %>% filter(month(date)>2 & month(date)<9) %>% 
-  filter(site %in% c("NFA", "NFY")) %>% 
+  #filter(site %in% c("NFA", "NFY")) %>% 
   mutate(M_DAY = mday(date),
          WK = week(date),
          OVIPOSITION = ifelse(is.na(missData), 0, 1),
@@ -36,7 +36,7 @@ ggplot() +
   geom_line(data=df, aes(x=DOWY, y=lev_avg, color=site, group=site), alpha=0.9) +
   facet_grid(WY~.) + 
   #scale_fill_colorblind("Site", labels=c("NFA", "NFY"))+
-  scale_color_colorblind("Site", labels=c("NFA", "NFY"))+
+  #scale_color_colorblind("Site", labels=c("NFA", "NFY"))+
   scale_x_continuous(breaks=c(152,183,213,244,274,305, 335),
                      labels=c("Mar-01","Apr-01","May-01","Jun-01",
                               "Jul-01","Aug-01","Sep-01")) +
@@ -46,15 +46,15 @@ library(viridis)
 
 # quick ribbon plot:
 ggplot() + 
-  geom_ribbon(data=df, aes(x=DOWY, ymin=0, ymax=cfs_cms(Q_cfs), 
+  geom_ribbon(data=df, aes(x=DOWY, ymin=0, ymax=Q_cfs, 
                            fill=site, group=site), alpha=0.9) +
-  scale_fill_viridis_d("Site", labels=c("NFA", "NFY"), option = "E")+
+  #scale_fill_viridis_d("Site", labels=c("NFA", "NFY"), option = "E")+
   scale_x_continuous(breaks=c(152,183,213,244,274,305, 335),
                      labels=c("Mar-01","Apr-01","May-01",
                               "Jun-01","Jul-01","Aug-01","Sep-01")) +
-  theme_bw() + xlab("DOWY") + ylab("Flow (cms)") + 
+  theme_bw() + xlab("DOWY") + ylab("Flow (cfs)") + 
   geom_point(data=df, 
-             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, cfs_cms(Q_cfs)), 
+             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, Q_cfs), 
                  group=site), pch=21, fill="#7C7B78FF", 
              alpha=0.9, size=3.5) + 
   facet_grid(WY~., scales = "free_y")
@@ -64,14 +64,14 @@ ggplot() +
 
 # lineplot
 ggplot() + 
-  geom_line(data=df, aes(x=DOWY, y=cfs_cms(Q_cfs), color=site, group=site), alpha=0.9) +
-  scale_color_colorblind("Site", labels=c("NFA", "NFY"))+
+  geom_line(data=df, aes(x=DOWY, y=Q_cfs, color=site, group=site), alpha=0.9) +
+  #scale_color_colorblind("Site", labels=c("NFA", "NFY"))+
   scale_x_continuous(breaks=c(152,183,213,244,274,305, 335),
                      labels=c("Mar-01","Apr-01","May-01",
                               "Jun-01","Jul-01","Aug-01","Sep-01")) +
   theme_bw() + xlab("DOWY") + ylab("Flow (cms)") + 
   geom_point(data=df, 
-             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, cfs_cms(Q_cfs)), 
+             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, Q_cfs), 
                  group=site), pch=21, fill="#7C7B78FF", 
              alpha=0.9, size=3.5) + 
   facet_grid(WY~., scales = "free_y")
@@ -81,18 +81,18 @@ ggplot() +
 
 # thermohydrograph
 ggplot() + 
-  geom_linerange(data=df[df$site=="NFA",], aes(x=DOWY, ymin=0, ymax=cfs_cms(Q_cfs), 
+  geom_linerange(data=df[df$site=="NFA",], aes(x=DOWY, ymin=0, ymax=Q_cfs, 
                            color=temp_avg, group=site), size=1.5, alpha=0.8) +
-  geom_line(data=df[df$site=="NFA",], aes(x=DOWY, y=cfs_cms(Q_cfs)), size=0.5, alpha=1) +
+  geom_line(data=df[df$site=="NFA",], aes(x=DOWY, y=Q_cfs), size=0.5, alpha=1) +
   scale_colour_gradientn("Water \nTemp (C)",
                          colours=viridis(33, option="A"),
                          breaks=seq(0,33,3), limits=c(0,33)) + 
   scale_x_continuous(breaks=c(152,183,213,244,274,305, 335),
                      labels=c("Mar-01","Apr-01","May-01",
                               "Jun-01","Jul-01","Aug-01","Sep-01")) +
-  theme_bw() + xlab("DOWY") + ylab("Flow (cms)") + 
+  theme_bw() + xlab("DOWY") + ylab("Flow (cfs)") + 
   geom_point(data=df[df$site=="NFA",], 
-             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, cfs_cms(Q_cfs)), 
+             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, Q_cfs), 
                  group=site), pch=21, fill="yellow2",#fill="#7C7B78FF", 
              alpha=0.9, size=3.5) + 
   facet_grid(WY~., scales = "free_y")
@@ -118,11 +118,11 @@ nfy13$temp_avg_interp <- zoo::na.spline(nfy13$temp_avg)
 nfy14$temp_avg_interp <- zoo::na.spline(nfy14$temp_avg)
 
 # plot to check
-# ggplot(data=nfy13) + geom_line(aes(x=date, y=Q_cfs, color=temp_avg), lwd=2) + 
-#   geom_line(aes(x=date, y=Q_cfs_approx, color=temp_avg_interp), alpha=0.7, lwd=1.2) +
-#   geom_line(aes(x=date, y=Q_cfs_spline), col="orange", alpha=0.7)
-# 
-# ggplot() + geom_line(data=nfy13, aes(x=date, y=Q_cfs_approx, color=temp_avg_interp), alpha=0.7, lwd=1.2) 
+ggplot(data=nfy13) + 
+  geom_line(aes(x=date, y=Q_cfs, color=temp_avg), lwd=2) +
+  geom_line(aes(x=date, y=Q_cfs_approx, color=temp_avg_interp), alpha=0.7, lwd=1.2) + 
+  #geom_line(aes(x=date, y=Q_cfs_spline), col="orange", alpha=0.7)+
+  scale_color_viridis()
 
 # add back to df:
 df2 <- df %>% 
@@ -138,9 +138,9 @@ df2 <- df %>%
 
 # NFA
 ggplot() + 
-  geom_linerange(data=df2[df2$site=="NFA",], aes(x=DOWY, ymin=0, ymax=cfs_cms(Q_cfs), 
+  geom_linerange(data=df2[df2$site=="NFA",], aes(x=DOWY, ymin=0, ymax=Q_cfs, 
                                                  color=temp_avg, group=site), size=1.5, alpha=0.8) +
-  geom_line(data=df2[df2$site=="NFA",], aes(x=DOWY, y=cfs_cms(Q_cfs)), size=0.5, alpha=1) +
+  geom_line(data=df2[df2$site=="NFA",], aes(x=DOWY, y=Q_cfs), size=0.5, alpha=1) +
   scale_colour_gradientn("Water \nTemp (C)",
                          colours=viridis(33, option="A"),
                          breaks=seq(0,33,3), limits=c(0,33)) + 
@@ -149,17 +149,18 @@ ggplot() +
                               "Jun-01","Jul-01","Aug-01","Sep-01")) +
   theme_bw() + xlab("") + ylab("Flow (cms)") + labs(subtitle="NF American: Foothill Yellow-legged Frog Spawning Initiation") +
   geom_point(data=df2[df2$site=="NFA",], 
-             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, cfs_cms(Q_cfs)), 
+             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, Q_cfs), 
                  group=site), pch=21, fill="yellow2",#fill="#7C7B78FF", 
              alpha=0.9, size=5) + 
   facet_grid(WY~., scales = "free_y")
+
 ggsave(filename = "figs/rabo_spawning_nfa_2011-2016_thermohydro.png", width = 11, height = 8.5, dpi = 300, units = "in")
 
 # NFY
 ggplot() + 
-  geom_linerange(data=df2[df2$site=="NFY",], aes(x=DOWY, ymin=0, ymax=cfs_cms(Q_cfs), 
+  geom_linerange(data=df2[df2$site=="NFY",], aes(x=DOWY, ymin=0, ymax=Q_cfs, 
                                                  color=temp_avg3, group=site), size=1.5, alpha=0.8) +
-  geom_line(data=df2[df2$site=="NFY",], aes(x=DOWY, y=cfs_cms(Q_cfs)), size=0.5, alpha=1) +
+  geom_line(data=df2[df2$site=="NFY",], aes(x=DOWY, y=Q_cfs), size=0.5, alpha=1) +
   scale_colour_gradientn("Water \nTemp (C)",
                          colours=viridis(33, option="A"),
                          breaks=seq(0,33,3), limits=c(0,33)) + 
@@ -168,11 +169,23 @@ ggplot() +
                               "Jun-01","Jul-01","Aug-01","Sep-01")) +
   theme_bw() + xlab("") + ylab("Flow (cms)") + labs(subtitle="NF Yuba: Foothill Yellow-legged Frog Spawning Initiation") +
   geom_point(data=df2[df2$site=="NFY",], 
-             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, cfs_cms(Q_cfs)), 
+             aes(x=DOWY, y=ifelse(OVIPOSITION==0, NA, Q_cfs), 
                  group=site), pch=21, fill="yellow2",#fill="#7C7B78FF", 
              alpha=0.9, size=5) + 
   facet_grid(WY~., scales = "free_y")
 ggsave(filename = "figs/rabo_spawning_nfy_2011-2016_thermohydro.png", width = 11, height = 8.5, dpi = 300, units = "in")
+
+
+# Summary and Export ------------------------------------------------------
+df_out <- df2 %>% select(site:temp_CV, lev_7_avg, temp_7_avg:temp_30_min, days_no_ppt:totalEM, Q_cfs:Q_7_CV, len_km, EM_per_km, OVIPOSITION)
+naniar::gg_miss_var(df_out)
+
+#xport
+library(fs)
+fs::dir_create("data_clean")
+write_csv(df_out, file = "data_clean/breeding_temp_flow_2011-2016_sierras.csv")
+
+
 # TRIM DATA FOR MOD -------------------------------------------------------
 
 # test with one site across multiple years
