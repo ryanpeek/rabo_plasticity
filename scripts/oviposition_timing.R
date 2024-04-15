@@ -45,22 +45,26 @@ wb <- gs4_get("https://docs.google.com/spreadsheets/d/1n7Cpf6J7wvGhX4sEuZ7MFOZZ7
 
 dat_clean <- wb %>% 
   read_sheet() %>% 
-  janitor::clean_names() %>% 
-  select(-time)
+  janitor::clean_names() 
+
+# save out draft version
+dat_clean |> 
+  mutate(across(where(is.POSIXct), as.Date)) |> 
+  write_csv("data_clean/rabo_plasticity_oviposition_ca.csv")
 
 # GET NFA ESTIM -----------------------------------------------------------
 
-dat_nfa <- dat_clean %>% filter(site == "NFA", !is.na(obs_strt)) %>% 
+dat_nfa <- dat_clean %>% filter(site %in% c("NFA", "NFA-RRAV"), !is.na(obs_strt)) %>% 
   mutate(obs_doy = yday(obs_strt),
          estim_doy = yday(estim_strt), 
-         wyt=forcats::fct_relevel(wyt, c("W","BN","D","C")))
+         wyt=forcats::fct_relevel(wyt, c("W","AN", "BN","D","C")))
 
 # plot
 ggplot(data=dat_nfa, aes(y=estim_doy, x=year, shape=trib)) + 
   geom_point(aes(color=wyt),size=4) +
   scale_color_viridis_d() +
   scale_y_continuous(breaks=c(seq(115,180,10)), labels = c("May 1", "May 10", "May 20", "May 30", "Jun 9", "Jun 19", "Jun 29"))+
-  geom_smooth(method = "glm") +
+  geom_smooth(method = "gam") +
   facet_grid(.~trib)
 
 # avg start date:

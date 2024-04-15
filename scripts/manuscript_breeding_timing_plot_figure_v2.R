@@ -2,53 +2,58 @@
 ## R. Peek
 
 library(lubridate)
-library(ggplot2)
+library(tidyverse)
 library(scales)
 library(grid)
 library(ggthemes)
 library(viridis)
 
 # GET DATA ----------------------------------------------------------------
-inputfile<-"C://Users//rapeek//Dropbox//R//PROJECTS//RbPlasticity/data/processed/Plasticity_breeding_summary_CA.csv"
+#inputfile<-"C://Users//rapeek//Dropbox//R//PROJECTS//RbPlasticity/data/processed/Plasticity_breeding_summary_CA.csv"
 
-inputfile<-"data/processed/Plasticity_breeding_summary_CA.csv"
-frog<-read.csv(inputfile,stringsAsFactors=TRUE)
+inputfile<-"data_clean/rabo_plasticity_oviposition_ca.csv"
+frog<-read_csv(inputfile)
 
 # FORMAT DATES ------------------------------------------------------------
-frog[,c(10)]<-mdy(as.character(frog[,c(10)]))
-frog[,c(11)]<-mdy(as.character(frog[,c(11)]))
-frog[,c(12)]<-mdy(as.character(frog[,c(12)]))
-frog[,c(13)]<-mdy(as.character(frog[,c(13)]))
 
-Frogs<-frog[frog$Trib=="N",]# remove all tribs
+# filter out tribs
+Frogs <- frog |> filter(trib!="Y") |> 
+  mutate(
+    obs_doy = yday(obs_strt),
+    estim_doy = yday(estim_strt), 
+    # reorder the factor levels for water year type so they appear correctly in legend
+    wyt=forcats::fct_relevel(wyt, c("W","AN","BN","D","C")))
 
 ## Subset to years above 1980 or 2000
-rcsn80<-Frogs[Frogs$estim_strt >= as.POSIXct("1980-01-01"),]
-rcsn02<-Frogs[Frogs$estim_strt >= as.POSIXct("2002-01-01"),]
-
-# reorder the factor levels for water year type so they appear correctly in legend
-rcsn80$WYT<-factor(rcsn80$WYT,levels=c("W","AN","BN","D","C"))
-rcsn02$WYT<-factor(rcsn02$WYT,levels=c("W","AN","BN","D","C"))
+rcsn80<-Frogs[year(Frogs$estim_strt) >= "1980",]
+rcsn02<-Frogs[year(Frogs$estim_strt) >= "2002",]
 
 # SHADED BOXES AND 2002-2013 ----------------------------------------------
 
-sp <- ggplot(aes(x=yday(obs_strt), y=Year, color=Sierra_Coast),data=rcsn02) + 
+sp <- ggplot(aes(x=yday(as_date(estim_strt)), y=year, color=sierra_coast),data=rcsn02) + 
   geom_rect(aes(ymin=2002.5,ymax=2003.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
   geom_rect(aes(ymin=2004.5,ymax=2005.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
   geom_rect(aes(ymin=2006.5,ymax=2007.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
   geom_rect(aes(ymin=2008.5,ymax=2009.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
   geom_rect(aes(ymin=2010.5,ymax=2011.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
   geom_rect(aes(ymin=2012.5,ymax=2013.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
+  geom_rect(aes(ymin=2014.5,ymax=2015.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
+  geom_rect(aes(ymin=2016.5,ymax=2017.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
+  geom_rect(aes(ymin=2018.5,ymax=2019.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
+  geom_rect(aes(ymin=2020.5,ymax=2021.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
+  geom_rect(aes(ymin=2022.5,ymax=2023.5, xmin=55,xmax=215),fill="gray90",color="gray90",alpha=0.7,expand=c(0.5,0.5))+
   geom_point(pch=16,size=3.7) +
   geom_point(pch=21,bg="gray",size=2.6,show.legend=FALSE) +
-  geom_text(aes(label=Site),size=3,hjust=-0.2,vjust=-1,fontface=3,show.legend=FALSE)+ # position=position_jitter(width = 0.4,height=0.4)
-  scale_y_continuous(breaks=seq(2002,2013,1)) +
+  geom_text(aes(label=site),size=3,hjust=-0.2,vjust=-1,fontface=3,show.legend=FALSE)+ # position=position_jitter(width = 0.4,height=0.4)
+  scale_y_continuous(breaks=seq(2002,2023,1)) +
   ylab("Year") + xlab("")+
   scale_x_continuous(breaks=c(60,75,90,105,120,135,150,165,180,195,210),expand=c(0,0),labels=c("Mar-1","Mar-15","Apr-1","Apr-15","May-1","May-15","Jun-1","Jun-15","Jul-1","Jul-15","Aug-1")) +
   scale_colour_manual(labels=c("Coastal", "Sierra"),values=c("red", "black"))+ theme_bw() +theme(plot.title=element_text(family="sans",size=14))+
-  labs(title=expression(paste(italic("R. boylii")," Start of Oviposition", sep="")),color="Sierra/Coastal")+
-  annotate("text", label = "n = 47 records",y = 2002, x = 190,size=5, fontface="italic")
+  labs(title=expression(paste(italic("R. boylii")," Start of Oviposition", sep="")),color="Sierra/Coastal")
+  #annotate("text", label = "n = 47 records",y = 2002, x = 190,size=5, fontface="italic")
 sp 
+
+ggsave("figs/oviposition_2002_to_2023.pdf", width = 11, height = 8.5)
 
 # different colors
 
